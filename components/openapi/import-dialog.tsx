@@ -23,6 +23,7 @@ import { parseYaml } from '@/lib/openapi/parser';
 import { ValidationError } from '@/lib/openapi/types';
 import { cn } from '@/lib/utils';
 import { fetchOpenApiFromUrl } from '@/app/actions/fetch-openapi';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 
 interface ImportDialogProps {
   trigger?: React.ReactNode;
@@ -37,6 +38,7 @@ export function ImportDialog({ trigger }: ImportDialogProps) {
   const [urlInput, setUrlInput] = useState('');
   const [isLoadingUrl, setIsLoadingUrl] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isOnline = useOnlineStatus();
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -167,9 +169,10 @@ export function ImportDialog({ trigger }: ImportDialogProps) {
               </TabsTrigger>
               <TabsTrigger 
                 value="url"
-                className="border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary data-[state=active]:neo-shadow-sm"
+                disabled={!isOnline}
+                className="border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary data-[state=active]:neo-shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                From URL
+                From URL {!isOnline && '(Offline)'}
               </TabsTrigger>
             </TabsList>
           </div>
