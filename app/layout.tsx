@@ -17,6 +17,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className={`${spaceGrotesk.variable} ${spaceMono.variable}`}>
+      <head>
+        <meta name="apple-mobile-web-app-title" content="API Author" />
+      </head>
       <body className="font-sans antialiased">
         <ThemeProvider
           attribute="class"
