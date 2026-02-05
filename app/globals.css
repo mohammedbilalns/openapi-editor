@@ -1,0 +1,186 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  /* Muted border-foreground in dark mode for easier viewing */
+  .dark .border-foreground {
+    border-color: hsl(var(--border-strong));
+  }
+  .dark .border-b-foreground {
+    border-bottom-color: hsl(var(--border-strong));
+  }
+  .dark .border-t-foreground {
+    border-top-color: hsl(var(--border-strong));
+  }
+  .dark .border-l-foreground {
+    border-left-color: hsl(var(--border-strong));
+  }
+  .dark .border-r-foreground {
+    border-right-color: hsl(var(--border-strong));
+  }
+  /* Muted dividers in dark mode */
+  .dark .bg-foreground {
+    background-color: hsl(var(--border-strong));
+  }
+}
+
+@layer base {
+  :root {
+    /* Neobrutalist Light Theme - Bold, high contrast */
+    --background: 60 30% 96%;
+    --foreground: 0 0% 5%;
+    --card: 60 30% 96%;
+    --card-foreground: 0 0% 5%;
+    --popover: 60 30% 96%;
+    --popover-foreground: 0 0% 5%;
+    --primary: 0 0% 5%;
+    --primary-foreground: 60 30% 96%;
+    --secondary: 45 100% 60%;
+    --secondary-foreground: 0 0% 5%;
+    --muted: 45 20% 88%;
+    --muted-foreground: 0 0% 35%;
+    --accent: 150 80% 45%;
+    --accent-foreground: 0 0% 5%;
+    --destructive: 0 85% 55%;
+    --destructive-foreground: 60 30% 96%;
+    --border: 0 0% 5%;
+    --input: 0 0% 5%;
+    --ring: 0 0% 5%;
+    --chart-1: 0 85% 55%;
+    --chart-2: 150 80% 45%;
+    --chart-3: 45 100% 60%;
+    --chart-4: 200 80% 50%;
+    --chart-5: 280 70% 55%;
+    --radius: 0;
+    --sidebar-background: 60 30% 96%;
+    --sidebar-foreground: 0 0% 5%;
+    --sidebar-primary: 0 0% 5%;
+    --sidebar-primary-foreground: 60 30% 96%;
+    --sidebar-accent: 45 100% 60%;
+    --sidebar-accent-foreground: 0 0% 5%;
+    --sidebar-border: 0 0% 5%;
+    --sidebar-ring: 0 0% 5%;
+    --border-strong: 0 0% 5%;
+  }
+  .dark {
+    /* Neobrutalist Dark Theme */
+    --background: 220 15% 10%;
+    --foreground: 60 30% 96%;
+    --card: 220 15% 13%;
+    --card-foreground: 60 30% 96%;
+    --popover: 220 15% 13%;
+    --popover-foreground: 60 30% 96%;
+    --primary: 60 30% 96%;
+    --primary-foreground: 220 15% 10%;
+    --secondary: 45 100% 55%;
+    --secondary-foreground: 0 0% 5%;
+    --muted: 220 15% 18%;
+    --muted-foreground: 60 10% 65%;
+    --accent: 150 80% 50%;
+    --accent-foreground: 0 0% 5%;
+    --destructive: 0 85% 55%;
+    --destructive-foreground: 60 30% 96%;
+    --border: 220 15% 25%;
+    --input: 220 15% 25%;
+    --ring: 220 15% 30%;
+    --chart-1: 0 85% 60%;
+    --chart-2: 150 80% 50%;
+    --chart-3: 45 100% 60%;
+    --chart-4: 200 80% 55%;
+    --chart-5: 280 70% 60%;
+    --sidebar-background: 220 15% 10%;
+    --sidebar-foreground: 60 30% 96%;
+    --sidebar-primary: 60 30% 96%;
+    --sidebar-primary-foreground: 220 15% 10%;
+    --sidebar-accent: 45 100% 55%;
+    --sidebar-accent-foreground: 0 0% 5%;
+    --sidebar-border: 220 15% 25%;
+    --sidebar-ring: 220 15% 30%;
+    --border-strong: 220 15% 30%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  /* Neobrutalist shadow utility */
+  .neo-shadow {
+    box-shadow: 4px 4px 0 0 hsl(var(--foreground));
+  }
+  .dark .neo-shadow {
+    box-shadow: 4px 4px 0 0 hsl(var(--border-strong));
+  }
+  .neo-shadow-sm {
+    box-shadow: 2px 2px 0 0 hsl(var(--foreground));
+  }
+  .dark .neo-shadow-sm {
+    box-shadow: 2px 2px 0 0 hsl(var(--border-strong));
+  }
+  .neo-shadow-lg {
+    box-shadow: 6px 6px 0 0 hsl(var(--foreground));
+  }
+  .dark .neo-shadow-lg {
+    box-shadow: 6px 6px 0 0 hsl(var(--border-strong));
+  }
+  .neo-shadow-accent {
+    box-shadow: 4px 4px 0 0 hsl(var(--accent));
+  }
+  .neo-shadow-secondary {
+    box-shadow: 4px 4px 0 0 hsl(var(--secondary));
+  }
+
+  /* Neobrutalist button - ensures proper hover contrast */
+  .neo-btn {
+    @apply border-2 border-foreground font-bold uppercase transition-all rounded-none;
+    box-shadow: 2px 2px 0 0 hsl(var(--foreground));
+  }
+  .dark .neo-btn {
+    border-color: hsl(var(--border-strong));
+    box-shadow: 2px 2px 0 0 hsl(var(--border-strong));
+  }
+  .neo-btn:hover {
+    @apply translate-x-0.5 translate-y-0.5;
+    box-shadow: none;
+  }
+  .neo-btn:disabled {
+    @apply opacity-40 cursor-not-allowed translate-x-0 translate-y-0;
+  }
+  .neo-btn-accent {
+    @apply neo-btn;
+    background-color: hsl(150 80% 45%) !important;
+    color: hsl(0 0% 5%) !important;
+  }
+  .neo-btn-accent:hover {
+    background-color: hsl(150 80% 40%) !important;
+    color: hsl(0 0% 5%) !important;
+  }
+  .neo-btn-secondary {
+    @apply neo-btn;
+    background-color: hsl(45 100% 60%) !important;
+    color: hsl(0 0% 5%) !important;
+  }
+  .neo-btn-secondary:hover {
+    background-color: hsl(45 100% 55%) !important;
+    color: hsl(0 0% 5%) !important;
+  }
+  .neo-btn-outline {
+    @apply neo-btn;
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  .neo-btn-outline:hover {
+    background-color: hsl(var(--muted)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+}
