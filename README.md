@@ -14,7 +14,7 @@ A modern, neo-brutalist, web-based WYSIWYG editor for authoring API documentatio
 - 👤 **No accounts**, no subscriptions, no cloud, no vendor lock-in! 
 - 🌐 **Runs entirely in the browser** - no installation needed!
 - 🤳 **Responsive** optimized for desktop, tablet, and mobile
-- 🏕️ **Offline-first** with IndexedDB persistence, can run as a PWA.
+- 🏕️ **Offline-first PWA** with service worker caching - works completely offline after first visit!
 - 🎨 **Visual-first editing** with a clean, intuitive interface.
 - 🛟 **Type-safe** development with full TypeScript support
 - 🔗 **Graph-based architecture** internally to manage schema relationships and references.
@@ -53,6 +53,17 @@ pnpm build
 # Start the production server
 pnpm start
 ```
+
+### PWA Installation
+
+The OpenAPI Editor can be installed as a Progressive Web App (PWA) for offline use:
+
+1. Open the application in a supported browser (Chrome, Edge, Safari, etc.)
+2. Look for the "Install" button in the browser's address bar or menu
+3. Click "Install" to add the app to your device
+4. The app will work completely offline after the first visit
+
+**Note:** When offline, the "From URL" import feature is automatically disabled since it requires a server-side proxy to bypass CORS restrictions. You can still use "Paste YAML" and "Upload File" options while offline.
 
 
 ## Contributing
