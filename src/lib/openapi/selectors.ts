@@ -6,6 +6,7 @@
  * at module level, so every subscriber shares one computation and the selector
  * returns the same reference until its inputs change.
  */
+import { selectCanRedo, selectCanUndo } from './derive'
 import { useEditorStore } from './store'
 import type {
   HttpMethod,
@@ -259,9 +260,9 @@ export function getSchemaUsage(): Map<NodeId, SchemaReferrer[]> {
 // ---------------------------------------------------------------------------
 // History
 
-export const useCanUndo = (): boolean => useEditorStore((s) => s.canUndo())
+export const useCanUndo = (): boolean => useEditorStore(selectCanUndo)
 
-export const useCanRedo = (): boolean => useEditorStore((s) => s.canRedo())
+export const useCanRedo = (): boolean => useEditorStore(selectCanRedo)
 
 // ---------------------------------------------------------------------------
 // Actions

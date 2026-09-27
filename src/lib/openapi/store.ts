@@ -19,8 +19,6 @@ import {
 } from './types';
 import { getSchemaUsageCounts } from './refs';
 
-export type TabType = 'routes' | 'schemas' | 'settings';
-
 /*
  * Immutability contract
  * ---------------------
@@ -44,10 +42,6 @@ export interface EditorState {
   // Version counter for tracking changes (used by YAML preview)
   documentVersion: number;
 
-  // Selection state
-  selectedSchemaId: NodeId | null;
-  selectedRouteId: NodeId | null;
-
   // History for undo/redo: every document state, history[historyIndex] === document
   history: ApiDocument[];
   historyIndex: number;
@@ -61,16 +55,16 @@ export interface EditorState {
   // Command log (most recent entries only)
   commandLog: Command[];
 
-  // UI state
-  activeTab: TabType;
-  yamlPreviewOpen: boolean;
-
   // Actions - Document
+  /** Replace the document (import). Undoable. */
   setDocument: (doc: ApiDocument) => void;
+  /** Replace the document with an empty one. Undoable. */
+  resetDocument: () => void;
   updateInfo: (info: Partial<InfoObject>) => void;
 
   // Actions - Schemas
-  addSchema: (schema: SchemaNode) => void;
+  /** Adds the schema and returns its id. */
+  addSchema: (schema: SchemaNode) => NodeId;
   updateSchema: (id: NodeId, updates: Partial<SchemaNode>) => void;
   deleteSchema: (id: NodeId) => void;
   addFieldToSchema: (schemaId: NodeId, field: PropertyDef) => void;
@@ -78,13 +72,16 @@ export interface EditorState {
   deleteField: (schemaId: NodeId, fieldName: string) => void;
 
   // Actions - Routes
-  addRoute: (route: Route) => void;
+  /** Adds the route and returns its id. */
+  addRoute: (route: Route) => NodeId;
   updateRoute: (id: NodeId, updates: Partial<Route>) => void;
   deleteRoute: (id: NodeId) => void;
   addParameter: (routeId: NodeId, param: ParameterDef) => void;
   updateParameter: (routeId: NodeId, paramId: NodeId, updates: Partial<ParameterDef>) => void;
   deleteParameter: (routeId: NodeId, paramId: NodeId) => void;
   setRequestBody: (routeId: NodeId, body: RequestBody | undefined) => void;
+  /** Merge into the route's existing request body (no-op without one). Text edits coalesce. */
+  updateRequestBody: (routeId: NodeId, updates: Partial<RequestBody>) => void;
   addResponse: (routeId: NodeId, statusCode: string, response: ResponseDef) => void;
   updateResponse: (routeId: NodeId, statusCode: string, updates: Partial<ResponseDef>) => void;
   deleteResponse: (routeId: NodeId, statusCode: string) => void;
@@ -101,13 +98,13 @@ export interface EditorState {
 
   // Actions - Tags
   addTag: (tag: Tag) => void;
+  /**
+   * Update a tag's name and/or description. A rename is applied to every route
+   * that uses the tag; renaming onto another existing tag (or to '') is refused.
+   */
+  updateTag: (name: string, updates: Partial<Tag>) => void;
+  /** Remove the tag definition and strip the tag from every route that uses it. */
   deleteTag: (name: string) => void;
-
-  // Actions - Selection
-  selectSchema: (id: NodeId | null) => void;
-  selectRoute: (id: NodeId | null) => void;
-  setActiveTab: (tab: TabType) => void;
-  setYamlPreviewOpen: (open: boolean) => void;
 
   // Actions - History
   undo: () => void;
@@ -124,7 +121,7 @@ export interface EditorState {
   /** Usage count of every referenced schema, computed once per document version. */
   getSchemaUsageCounts: () => ReadonlyMap<NodeId, number>;
 
-  // Persistence - Initialize document without adding to history (for loading from storage)
+  /** Load a document (from storage) as a fresh history. Not undoable. */
   initializeDocument: (doc: ApiDocument) => void;
 }
 
@@ -169,12 +166,22 @@ function textEditKey(target: string, updates: object): string | undefined {
   return `${target}|${keys.sort().join(',')}`;
 }
 
-/** Keep a selection only if it still exists in `doc`. */
-function pruneSelection(state: EditorState, doc: ApiDocument): Pick<EditorState, 'selectedRouteId' | 'selectedSchemaId'> {
-  return {
-    selectedRouteId: state.selectedRouteId && doc.routes.has(state.selectedRouteId) ? state.selectedRouteId : null,
-    selectedSchemaId: state.selectedSchemaId && doc.schemas.has(state.selectedSchemaId) ? state.selectedSchemaId : null,
-  };
+/**
+ * Routes with tag `from` renamed to `to` (or removed when `to` is undefined),
+ * copying only the routes that use it. Returns `routes` itself when none do.
+ */
+function renameTagInRoutes(routes: Map<NodeId, Route>, from: string, to: string | undefined): Map<NodeId, Route> {
+  let next = routes;
+  for (const [id, route] of routes) {
+    if (!route.tags.includes(from)) continue;
+    const tags =
+      to === undefined || route.tags.includes(to)
+        ? route.tags.filter((t) => t !== from)
+        : route.tags.map((t) => (t === from ? to : t));
+    if (next === routes) next = new Map(routes);
+    next.set(id, { ...route, tags });
+  }
+  return next;
 }
 
 interface CommitOptions {
@@ -182,7 +189,6 @@ interface CommitOptions {
   coalesceKey?: string;
   /** key the *next* edit must match (differs from coalesceKey when an edit renames its target) */
   nextCoalesceKey?: string;
-  extra?: Partial<EditorState>;
 }
 
 const initialDocument = createEmptyDocument();
@@ -225,7 +231,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
       historyIndex: history.length - 1,
       documentVersion: state.documentVersion + 1,
       commandLog,
-      ...options.extra,
     });
   }
 
@@ -253,19 +258,19 @@ export const useEditorStore = create<EditorState>((set, get) => {
     // Initial state
     document: initialDocument,
     documentVersion: 0,
-    selectedSchemaId: null,
-    selectedRouteId: null,
     history: [initialDocument],
     historyIndex: 0,
     maxHistorySize: 50,
     historyCoalesceMs: 1000,
     commandLog: [],
-    activeTab: 'routes',
-    yamlPreviewOpen: false,
 
     // Document actions
     setDocument: (doc) => {
-      commit(doc, 'IMPORT_DOCUMENT', null, { extra: pruneSelection(get(), doc) });
+      commit(doc, 'IMPORT_DOCUMENT', null);
+    },
+
+    resetDocument: () => {
+      commit(createEmptyDocument(), 'RESET_DOCUMENT', null);
     },
 
     updateInfo: (info) => {
@@ -276,9 +281,8 @@ export const useEditorStore = create<EditorState>((set, get) => {
     // Schema actions
     addSchema: (schema) => {
       const doc = get().document;
-      commit({ ...doc, schemas: mapWith(doc.schemas, schema.id, schema) }, 'ADD_SCHEMA', schema, {
-        extra: { selectedSchemaId: schema.id },
-      });
+      commit({ ...doc, schemas: mapWith(doc.schemas, schema.id, schema) }, 'ADD_SCHEMA', schema);
+      return schema.id;
     },
 
     updateSchema: (id, updates) => {
@@ -297,11 +301,9 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
 
     deleteSchema: (id) => {
-      const state = get();
-      if (!state.document.schemas.has(id)) return;
-      commit({ ...state.document, schemas: mapWithout(state.document.schemas, id) }, 'DELETE_SCHEMA', { id }, {
-        extra: { selectedSchemaId: state.selectedSchemaId === id ? null : state.selectedSchemaId },
-      });
+      const doc = get().document;
+      if (!doc.schemas.has(id)) return;
+      commit({ ...doc, schemas: mapWithout(doc.schemas, id) }, 'DELETE_SCHEMA', { id });
     },
 
     addFieldToSchema: (schemaId, field) => {
@@ -373,9 +375,8 @@ export const useEditorStore = create<EditorState>((set, get) => {
     // Route actions
     addRoute: (route) => {
       const doc = get().document;
-      commit({ ...doc, routes: mapWith(doc.routes, route.id, route) }, 'ADD_ROUTE', route, {
-        extra: { selectedRouteId: route.id },
-      });
+      commit({ ...doc, routes: mapWith(doc.routes, route.id, route) }, 'ADD_ROUTE', route);
+      return route.id;
     },
 
     updateRoute: (id, updates) => {
@@ -385,11 +386,9 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
 
     deleteRoute: (id) => {
-      const state = get();
-      if (!state.document.routes.has(id)) return;
-      commit({ ...state.document, routes: mapWithout(state.document.routes, id) }, 'DELETE_ROUTE', { id }, {
-        extra: { selectedRouteId: state.selectedRouteId === id ? null : state.selectedRouteId },
-      });
+      const doc = get().document;
+      if (!doc.routes.has(id)) return;
+      commit({ ...doc, routes: mapWithout(doc.routes, id) }, 'DELETE_ROUTE', { id });
     },
 
     addParameter: (routeId, param) => {
@@ -421,6 +420,16 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     setRequestBody: (routeId, body) => {
       commitRoute(routeId, 'SET_REQUEST_BODY', { routeId, body }, (route) => ({ ...route, requestBody: body }));
+    },
+
+    updateRequestBody: (routeId, updates) => {
+      commitRoute(
+        routeId,
+        'UPDATE_REQUEST_BODY',
+        { routeId, updates },
+        (route) => (route.requestBody ? { ...route, requestBody: { ...route.requestBody, ...updates } } : null),
+        { coalesceKey: textEditKey(`body:${routeId}`, updates) }
+      );
     },
 
     addResponse: (routeId, statusCode, response) => {
@@ -523,17 +532,30 @@ export const useEditorStore = create<EditorState>((set, get) => {
       commit({ ...doc, tags: [...doc.tags, tag] }, 'ADD_TAG', tag);
     },
 
-    deleteTag: (name) => {
+    updateTag: (name, updates) => {
       const doc = get().document;
-      if (!doc.tags.some((t) => t.name === name)) return;
-      commit({ ...doc, tags: doc.tags.filter((t) => t.name !== name) }, 'DELETE_TAG', { name });
+      const index = doc.tags.findIndex((t) => t.name === name);
+      if (index === -1) return;
+      const current = doc.tags[index];
+      const newName = updates.name !== undefined && updates.name !== name ? updates.name : undefined;
+      if (newName !== undefined && (newName === '' || doc.tags.some((t) => t.name === newName))) return;
+      const next: Tag = { ...current, ...updates };
+      if (newName === undefined && next.description === current.description) return;
+      const tags = doc.tags.map((t, i) => (i === index ? next : t));
+      const routes = newName === undefined ? doc.routes : renameTagInRoutes(doc.routes, name, newName);
+      const keyFor = (tagName: string) => textEditKey(`tag:${tagName}`, updates);
+      commit({ ...doc, tags, routes }, 'UPDATE_TAG', { name, updates }, {
+        coalesceKey: keyFor(name),
+        nextCoalesceKey: keyFor(newName ?? name),
+      });
     },
 
-    // Selection actions
-    selectSchema: (id) => set({ selectedSchemaId: id }),
-    selectRoute: (id) => set({ selectedRouteId: id }),
-    setActiveTab: (tab) => set({ activeTab: tab }),
-    setYamlPreviewOpen: (open) => set({ yamlPreviewOpen: open }),
+    deleteTag: (name) => {
+      const doc = get().document;
+      const routes = renameTagInRoutes(doc.routes, name, undefined);
+      if (!doc.tags.some((t) => t.name === name) && routes === doc.routes) return;
+      commit({ ...doc, tags: doc.tags.filter((t) => t.name !== name), routes }, 'DELETE_TAG', { name });
+    },
 
     // History actions
     undo: () => {
@@ -541,12 +563,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       if (state.historyIndex <= 0) return;
       lastEdit = null;
       const document = state.history[state.historyIndex - 1];
-      set({
-        document,
-        historyIndex: state.historyIndex - 1,
-        documentVersion: state.documentVersion + 1,
-        ...pruneSelection(state, document),
-      });
+      set({ document, historyIndex: state.historyIndex - 1, documentVersion: state.documentVersion + 1 });
     },
 
     redo: () => {
@@ -554,12 +571,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       if (state.historyIndex >= state.history.length - 1) return;
       lastEdit = null;
       const document = state.history[state.historyIndex + 1];
-      set({
-        document,
-        historyIndex: state.historyIndex + 1,
-        documentVersion: state.documentVersion + 1,
-        ...pruneSelection(state, document),
-      });
+      set({ document, historyIndex: state.historyIndex + 1, documentVersion: state.documentVersion + 1 });
     },
 
     canUndo: () => get().historyIndex > 0,
@@ -583,8 +595,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
         history: [doc],
         historyIndex: 0,
         documentVersion: 0,
-        selectedSchemaId: null,
-        selectedRouteId: null,
         commandLog: [],
       });
     },

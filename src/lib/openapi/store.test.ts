@@ -52,12 +52,11 @@ function fixture(): ApiDocument {
 beforeEach(() => {
   store().initializeDocument(fixture());
   // one undo step per action; coalescing has its own tests
-  useEditorStore.setState({ activeTab: 'routes', yamlPreviewOpen: false, historyCoalesceMs: 0 });
+  useEditorStore.setState({ historyCoalesceMs: 0 });
 });
 
 describe('editor store: document actions', () => {
-  it('initializeDocument resets history, version and selection', () => {
-    store().selectRoute(listPets.id);
+  it('initializeDocument resets history and version', () => {
     store().updateRoute(listPets.id, { summary: 'x' });
     const fresh = fixture();
     store().initializeDocument(fresh);
@@ -65,7 +64,29 @@ describe('editor store: document actions', () => {
     expect(store().canUndo()).toBe(false);
     expect(store().canRedo()).toBe(false);
     expect(store().documentVersion).toBe(0);
-    expect(store().selectedRouteId).toBeNull();
+  });
+
+  it('setDocument (import) is undoable, initializeDocument (hydrate) is not', () => {
+    const before = doc();
+    const imported = createEmptyDocument();
+    store().setDocument(imported);
+    expect(doc()).toBe(imported);
+    store().undo();
+    expect(doc()).toBe(before);
+    store().redo();
+    expect(doc()).toBe(imported);
+  });
+
+  it('resetDocument replaces the document with an empty one, undoably', () => {
+    const before = doc();
+    store().resetDocument();
+    expect(doc()).not.toBe(before);
+    expect(doc().routes.size).toBe(0);
+    expect(doc().schemas.size).toBe(0);
+    expect(doc().info.title).toBe('New API');
+    expect(store().commandLog.at(-1)?.type).toBe('RESET_DOCUMENT');
+    store().undo();
+    expect(doc()).toBe(before);
   });
 
   it('updateInfo merges into info', () => {
@@ -73,21 +94,17 @@ describe('editor store: document actions', () => {
     expect(doc().info).toEqual({ title: 'Pets', version: '1.0.0', description: '' });
   });
 
-  it('schema actions add, update, delete and maintain selection', () => {
+  it('schema actions add (returning the id), update and delete', () => {
     const tag = createSchema('string', 'Tag');
-    store().addSchema(tag);
+    expect(store().addSchema(tag)).toBe(tag.id);
     expect(doc().schemas.get(tag.id)?.name).toBe('Tag');
-    expect(store().selectedSchemaId).toBe(tag.id);
 
     store().updateSchema(tag.id, { description: 'a tag', format: 'uuid' });
     expect(doc().schemas.get(tag.id)).toMatchObject({ name: 'Tag', description: 'a tag', format: 'uuid' });
 
-    store().selectSchema(pet.id);
     store().deleteSchema(tag.id);
     expect(doc().schemas.has(tag.id)).toBe(false);
-    expect(store().selectedSchemaId).toBe(pet.id); // other selection untouched
-    store().deleteSchema(pet.id);
-    expect(store().selectedSchemaId).toBeNull();
+    expect(doc().schemas.has(pet.id)).toBe(true); // others untouched
   });
 
   it('updateSchema on an unknown id is a no-op (no history entry)', () => {
@@ -146,15 +163,27 @@ describe('editor store: document actions', () => {
     expect(doc()).toBe(before);
   });
 
-  it('route actions add, update, delete and maintain selection', () => {
+  it('route actions add (returning the id), update and delete', () => {
     const r = createRoute('/owners', 'post');
-    store().addRoute(r);
-    expect(store().selectedRouteId).toBe(r.id);
+    expect(store().addRoute(r)).toBe(r.id);
     store().updateRoute(r.id, { summary: 'Create owner', tags: ['owners'] });
     expect(doc().routes.get(r.id)).toMatchObject({ path: '/owners', method: 'post', summary: 'Create owner', tags: ['owners'] });
     store().deleteRoute(r.id);
     expect(doc().routes.has(r.id)).toBe(false);
-    expect(store().selectedRouteId).toBeNull();
+  });
+
+  it('updateRequestBody merges into the existing body and is a no-op without one', () => {
+    const before = doc();
+    store().updateRequestBody(getPet.id, { description: 'x' });
+    expect(doc()).toBe(before);
+    store().setRequestBody(getPet.id, { id: 'b', required: false, content: new Map([['application/json', { schema: ref(pet) }]]) });
+    const content = doc().routes.get(getPet.id)!.requestBody!.content;
+    store().updateRequestBody(getPet.id, { description: 'A pet', required: true });
+    expect(doc().routes.get(getPet.id)!.requestBody).toMatchObject({ id: 'b', description: 'A pet', required: true });
+    expect(doc().routes.get(getPet.id)!.requestBody!.content).toBe(content);
+    store().undo();
+    expect(doc().routes.get(getPet.id)!.requestBody!.required).toBe(false);
+    expect(doc().routes.get(getPet.id)!.requestBody!.description).toBeUndefined();
   });
 
   it('parameter, request body and response actions', () => {
@@ -198,6 +227,75 @@ describe('editor store: document actions', () => {
   });
 });
 
+describe('editor store: tags', () => {
+  beforeEach(() => {
+    store().updateRoute(listPets.id, { tags: ['pets', 'public'] });
+    store().updateRoute(getPet.id, { tags: ['pets'] });
+    store().addTag({ name: 'public' });
+  });
+
+  it('updateTag renames the tag and every route that uses it, in one undo step', () => {
+    const untouched = createRoute('/other', 'get');
+    store().addRoute(untouched);
+    store().updateTag('pets', { name: 'animals', description: 'All animals' });
+    expect(doc().tags).toEqual([{ name: 'animals', description: 'All animals' }, { name: 'public' }]);
+    expect(doc().routes.get(listPets.id)!.tags).toEqual(['animals', 'public']);
+    expect(doc().routes.get(getPet.id)!.tags).toEqual(['animals']);
+    expect(doc().routes.get(untouched.id)).toBe(untouched); // structural sharing
+    store().undo();
+    expect(doc().tags.map((t) => t.name)).toEqual(['pets', 'public']);
+    expect(doc().routes.get(listPets.id)!.tags).toEqual(['pets', 'public']);
+  });
+
+  it('updateTag changes only the description when the name is unchanged', () => {
+    const routes = doc().routes;
+    store().updateTag('pets', { name: 'pets', description: 'Pets' });
+    expect(doc().tags[0]).toEqual({ name: 'pets', description: 'Pets' });
+    expect(doc().routes).toBe(routes);
+  });
+
+  it('updateTag refuses empty names, existing names, unknown tags and no-op updates', () => {
+    const before = doc();
+    store().updateTag('pets', { name: '' });
+    store().updateTag('pets', { name: 'public' });
+    store().updateTag('nope', { name: 'x' });
+    store().updateTag('pets', { description: undefined });
+    expect(doc()).toBe(before);
+  });
+
+  it('merging a renamed tag into one a route already has does not duplicate it', () => {
+    store().updateRoute(getPet.id, { tags: ['pets', 'legacy'] });
+    store().addTag({ name: 'legacy' });
+    store().deleteTag('public');
+    store().updateTag('legacy', { name: 'public' });
+    expect(doc().routes.get(getPet.id)!.tags).toEqual(['pets', 'public']);
+  });
+
+  it('typing a rename coalesces into one undo step and follows the new name', () => {
+    useEditorStore.setState({ historyCoalesceMs: 1000 });
+    const before = doc();
+    store().updateTag('pets', { name: 'p' });
+    store().updateTag('p', { name: 'pe' });
+    store().updateTag('pe', { name: 'pet' });
+    expect(doc().routes.get(getPet.id)!.tags).toEqual(['pet']);
+    store().undo();
+    expect(doc()).toBe(before);
+  });
+
+  it('deleteTag strips the tag from routes, even when it was never defined', () => {
+    store().deleteTag('pets');
+    expect(doc().tags.map((t) => t.name)).toEqual(['public']);
+    expect(doc().routes.get(listPets.id)!.tags).toEqual(['public']);
+    expect(doc().routes.get(getPet.id)!.tags).toEqual([]);
+    store().updateRoute(getPet.id, { tags: ['stray'] });
+    store().deleteTag('stray');
+    expect(doc().routes.get(getPet.id)!.tags).toEqual([]);
+    const before = doc();
+    store().deleteTag('nothing');
+    expect(doc()).toBe(before);
+  });
+});
+
 describe('editor store: deleting a security scheme', () => {
   it('removes requirements on it from the document and routes', () => {
     store().addSecurityScheme({ id: 'bearer', name: 'bearer', type: 'http', scheme: 'bearer' });
@@ -219,16 +317,11 @@ describe('editor store: deleting a security scheme', () => {
   });
 });
 
-describe('editor store: selection and UI state', () => {
-  it('selection and tabs do not touch history or documentVersion', () => {
-    const v = store().documentVersion;
-    store().selectRoute(getPet.id);
-    store().selectSchema(pet.id);
-    store().setActiveTab('schemas');
-    store().setYamlPreviewOpen(true);
-    expect(store()).toMatchObject({ selectedRouteId: getPet.id, selectedSchemaId: pet.id, activeTab: 'schemas', yamlPreviewOpen: true });
-    expect(store().documentVersion).toBe(v);
-    expect(store().canUndo()).toBe(false);
+describe('editor store: document and history only', () => {
+  it('holds no selection or UI state (the URL and useUiPrefs own those)', () => {
+    for (const key of ['selectedRouteId', 'selectedSchemaId', 'activeTab', 'yamlPreviewOpen', 'selectRoute', 'selectSchema']) {
+      expect(store()).not.toHaveProperty(key);
+    }
   });
 
   it('every document edit bumps documentVersion', () => {
@@ -545,20 +638,18 @@ describe('editor store: bookkeeping', () => {
     expect(log[log.length - 1].payload).toEqual({ title: 't249' });
   });
 
-  it('clears selections that no longer exist after undo/redo or import', () => {
+  it('undo/redo across an add and an import restore exactly the earlier documents', () => {
+    const start = doc();
     const r = createRoute('/new', 'get');
     store().addRoute(r);
-    expect(store().selectedRouteId).toBe(r.id);
-    store().undo();
-    expect(store().selectedRouteId).toBeNull();
-
-    store().selectSchema(pet.id);
+    const added = doc();
     store().setDocument(createEmptyDocument());
-    expect(store().selectedSchemaId).toBeNull();
     store().undo();
-    store().selectSchema(pet.id);
+    expect(doc()).toBe(added);
+    store().undo();
+    expect(doc()).toBe(start);
     store().redo();
-    expect(store().selectedSchemaId).toBeNull();
+    expect(doc()).toBe(added);
   });
 
   it('memoizes usage counts per document version', () => {

@@ -79,7 +79,7 @@ describe('selectors', () => {
       admin: [a.id],
       [UNTAGGED]: [untagged.id],
     });
-    store().selectRoute(a.id); // not a document change
+    useEditorStore.setState({ historyCoalesceMs: 500 }); // not a document change
     expect(selectRouteIdsByTag(state())).toBe(groups);
     store().updateRoute(b.id, { tags: ['admin'] });
     expect(selectRouteIdsByTag(state()).get('admin')).toEqual([a.id, b.id]);
