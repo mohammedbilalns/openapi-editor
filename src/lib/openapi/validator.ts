@@ -7,6 +7,7 @@ import {
   NodeId,
   SchemaOrRef,
 } from './types';
+import { forEachRefInSchema } from './refs';
 
 export function validateDocument(doc: ApiDocument): ValidationResult {
   const errors: ValidationError[] = [];
@@ -474,57 +475,84 @@ function validateReferences(
     }
   }
 
-  // Check for circular references (simplified - just detect direct cycles)
-  for (const [id, schema] of doc.schemas) {
-    const visited = new Set<NodeId>();
-    const stack = new Set<NodeId>();
-
-    const hasCycle = (schemaId: NodeId): boolean => {
-      if (stack.has(schemaId)) return true;
-      if (visited.has(schemaId)) return false;
-
-      visited.add(schemaId);
-      stack.add(schemaId);
-
-      const s = doc.schemas.get(schemaId);
-      if (s) {
-        const refs = collectRefs(s);
-        for (const ref of refs) {
-          if (hasCycle(ref)) return true;
-        }
-      }
-
-      stack.delete(schemaId);
-      return false;
-    };
-
-    if (hasCycle(id)) {
-      warnings.push({
-        code: 'CIRCULAR_REFERENCE',
-        message: `Schema "${schema.name || 'Anonymous'}" has a circular reference`,
-        severity: 'warning',
-        location: { nodeId: id },
-      });
-    }
+  // Circular references: report schemas that are part of a reference cycle
+  // (including cycles that pass through inline schemas, e.g. tree nodes).
+  for (const id of findSchemasInCycles(doc)) {
+    const schema = doc.schemas.get(id)!;
+    warnings.push({
+      code: 'CIRCULAR_REFERENCE',
+      message: `Schema "${schema.name || 'Anonymous'}" has a circular reference`,
+      severity: 'warning',
+      location: { nodeId: id },
+    });
   }
 }
 
-function collectRefs(schema: SchemaNode): NodeId[] {
-  const refs: NodeId[] = [];
+/**
+ * Ids of schemas on a reference cycle (strongly connected components with more
+ * than one node, or a node referencing itself), in document order.
+ * Iterative Tarjan: O(schemas + refs), no recursion depth limit.
+ */
+export function findSchemasInCycles(doc: ApiDocument): NodeId[] {
+  const edges = new Map<NodeId, NodeId[]>();
+  for (const [id, schema] of doc.schemas) {
+    const out: NodeId[] = [];
+    forEachRefInSchema(schema, (target) => {
+      if (doc.schemas.has(target)) out.push(target);
+    });
+    edges.set(id, out);
+  }
 
-  const collect = (schemaOrRef: SchemaOrRef) => {
-    if (schemaOrRef.kind === 'ref') {
-      refs.push(schemaOrRef.targetId);
-    }
-  };
+  const index = new Map<NodeId, number>();
+  const low = new Map<NodeId, number>();
+  const onStack = new Set<NodeId>();
+  const stack: NodeId[] = [];
+  const inCycle = new Set<NodeId>();
+  let counter = 0;
 
-  if (schema.properties) {
-    for (const prop of schema.properties.values()) {
-      collect(prop.schema);
+  for (const root of edges.keys()) {
+    if (index.has(root)) continue;
+    const work: Array<{ id: NodeId; next: number }> = [{ id: root, next: 0 }];
+    index.set(root, counter);
+    low.set(root, counter++);
+    stack.push(root);
+    onStack.add(root);
+
+    while (work.length > 0) {
+      const frame = work[work.length - 1];
+      const out = edges.get(frame.id)!;
+      if (frame.next < out.length) {
+        const target = out[frame.next++];
+        if (!index.has(target)) {
+          index.set(target, counter);
+          low.set(target, counter++);
+          stack.push(target);
+          onStack.add(target);
+          work.push({ id: target, next: 0 });
+        } else if (onStack.has(target)) {
+          low.set(frame.id, Math.min(low.get(frame.id)!, index.get(target)!));
+        }
+        continue;
+      }
+      work.pop();
+      if (work.length > 0) {
+        const parent = work[work.length - 1].id;
+        low.set(parent, Math.min(low.get(parent)!, low.get(frame.id)!));
+      }
+      if (low.get(frame.id) === index.get(frame.id)) {
+        const component: NodeId[] = [];
+        let member: NodeId;
+        do {
+          member = stack.pop()!;
+          onStack.delete(member);
+          component.push(member);
+        } while (member !== frame.id);
+        if (component.length > 1 || out.includes(frame.id)) {
+          for (const m of component) inCycle.add(m);
+        }
+      }
     }
   }
-  if (schema.items) collect(schema.items);
-  if (schema.variants) schema.variants.forEach(collect);
 
-  return refs;
+  return Array.from(doc.schemas.keys()).filter((id) => inCycle.has(id));
 }

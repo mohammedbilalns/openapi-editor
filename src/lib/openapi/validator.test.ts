@@ -223,5 +223,25 @@ describe('validateDocument', () => {
       expect(hits.map((h) => h.location.nodeId)).toEqual([pet.id]);
       expect(hits[0].severity).toBe('warning');
     });
+
+    it('CIRCULAR_REFERENCE sees cycles through inline schemas (tree shapes)', () => {
+      const { doc, pet } = cleanDoc();
+      const children = createSchema('array');
+      children.items = ref(pet);
+      pet.properties!.set('children', { name: 'children', required: false, schema: { kind: 'inline', schema: children } });
+      expect(find(validateDocument(doc), 'CIRCULAR_REFERENCE').map((h) => h.location.nodeId)).toEqual([pet.id]);
+    });
+
+    it('CIRCULAR_REFERENCE flags every member of a cycle, but not schemas that merely point into one', () => {
+      const { doc, pet, get } = cleanDoc();
+      const a = addSchema(doc, createSchema('object', 'A'));
+      const b = addSchema(doc, createSchema('object', 'B'));
+      a.properties!.set('b', { name: 'b', required: false, schema: ref(b) });
+      b.properties!.set('a', { name: 'a', required: false, schema: ref(a) });
+      pet.properties!.set('a', { name: 'a', required: false, schema: ref(a) }); // Pet -> A <-> B
+      use(doc, get, a);
+      const flagged = find(validateDocument(doc), 'CIRCULAR_REFERENCE').map((h) => h.location.nodeId);
+      expect(flagged.sort()).toEqual([a.id, b.id].sort());
+    });
   });
 });
