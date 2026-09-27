@@ -221,6 +221,46 @@ paths:
     expect(doc.routes.size).toBe(1);
   });
 
+  it('tolerates empty (null) values where objects are expected instead of throwing', () => {
+    const result = parseYaml(`
+openapi: 3.0.0
+info: {title: T, version: '1'}
+paths:
+  /a:
+    post:
+      parameters:
+        -
+        - name: q
+          in: query
+      requestBody:
+        content:
+          application/json:
+      responses:
+        '200':
+        '404': ~
+components:
+  schemas:
+    Empty:
+    Holder:
+      type: object
+      properties:
+        loose:
+      required: [loose]
+    List:
+      type: array
+      items:
+`);
+    expect(result.document).not.toBeNull();
+    const doc = result.document!;
+    const post = route(doc, 'post', '/a');
+    expect(post.parameters.map((p) => p.name)).toEqual(['q']);
+    expect(Array.from(post.responses.keys())).toEqual(['200', '404']);
+    expect(post.requestBody?.content.has('application/json')).toBe(true);
+    expect(schema(doc, 'Empty').type).toBe('object');
+    expect(schema(doc, 'Holder').properties!.get('loose')!.required).toBe(true);
+    expect(schema(doc, 'List').type).toBe('array');
+  });
+
   it('gives each parse fresh node ids (no state leaks between parses)', () => {
     const a = parseOk(REALISTIC_SPEC_YAML).doc;
     const b = parseOk(REALISTIC_SPEC_YAML).doc;

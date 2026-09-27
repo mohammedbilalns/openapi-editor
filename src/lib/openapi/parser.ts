@@ -58,6 +58,14 @@ interface OpenAPISchema {
   }>;
 }
 
+// YAML leaves empty values as null (e.g. `items:` with nothing after it);
+// treat anything that is not an object as an empty object.
+function asObject(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 // Map to track schema names to IDs for $ref resolution
 const schemaNameToId = new Map<string, NodeId>();
 
@@ -238,7 +246,7 @@ function parseSchema(
   id: NodeId,
   errors: ValidationError[]
 ): SchemaNode {
-  const schemaData = data as Record<string, unknown>;
+  const schemaData = asObject(data);
 
   // Determine schema type
   let type: SchemaType = 'object';
@@ -282,7 +290,7 @@ function parseSchema(
         name: propName,
         schema: propSchema,
         required: required.includes(propName),
-        description: (propData as Record<string, unknown>)?.description as string | undefined,
+        description: asObject(propData).description as string | undefined,
       });
     }
 
@@ -324,7 +332,7 @@ function parseSchema(
 }
 
 function parseSchemaOrRef(data: unknown, errors: ValidationError[]): SchemaOrRef {
-  const schemaData = data as Record<string, unknown>;
+  const schemaData = asObject(data);
 
   // Check for $ref
   if (schemaData.$ref && typeof schemaData.$ref === 'string') {
@@ -358,7 +366,7 @@ function parseSecurityScheme(
   data: unknown,
   errors: ValidationError[]
 ): SecurityScheme {
-  const schemeData = data as Record<string, unknown>;
+  const schemeData = asObject(data);
 
   const scheme: SecurityScheme = {
     id: generateId(),
@@ -420,18 +428,20 @@ function parseOperation(
 
   // Parse parameters
   if (data.parameters && Array.isArray(data.parameters)) {
-    route.parameters = data.parameters.map((p) => parseParameter(p, errors));
+    route.parameters = data.parameters
+      .filter((p) => p !== null && typeof p === 'object')
+      .map((p) => parseParameter(p, errors));
   }
 
   // Parse request body
   if (data.requestBody) {
-    route.requestBody = parseRequestBody(data.requestBody as Record<string, unknown>, errors);
+    route.requestBody = parseRequestBody(asObject(data.requestBody), errors);
   }
 
   // Parse responses
   if (data.responses && typeof data.responses === 'object') {
     for (const [statusCode, responseData] of Object.entries(data.responses)) {
-      const response = parseResponse(responseData as Record<string, unknown>, errors);
+      const response = parseResponse(asObject(responseData), errors);
       route.responses.set(statusCode, response);
     }
   }
@@ -448,7 +458,7 @@ function parseOperation(
 }
 
 function parseParameter(data: unknown, errors: ValidationError[]): ParameterDef {
-  const paramData = data as Record<string, unknown>;
+  const paramData = asObject(data);
 
   return {
     id: generateId(),
@@ -468,7 +478,7 @@ function parseRequestBody(data: Record<string, unknown>, errors: ValidationError
 
   if (data.content && typeof data.content === 'object') {
     for (const [contentType, mediaData] of Object.entries(data.content)) {
-      const media = mediaData as Record<string, unknown>;
+      const media = asObject(mediaData);
       content.set(contentType, {
         schema: media.schema
           ? parseSchemaOrRef(media.schema, errors)
@@ -495,7 +505,7 @@ function parseResponse(data: Record<string, unknown>, errors: ValidationError[])
   if (data.content && typeof data.content === 'object') {
     response.content = new Map();
     for (const [contentType, mediaData] of Object.entries(data.content)) {
-      const media = mediaData as Record<string, unknown>;
+      const media = asObject(mediaData);
       response.content.set(contentType, {
         schema: media.schema
           ? parseSchemaOrRef(media.schema, errors)
