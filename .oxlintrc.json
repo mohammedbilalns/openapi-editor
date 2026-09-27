@@ -34,7 +34,22 @@
     "jsx-a11y/click-events-have-key-events": "warn",
     "jsx-a11y/no-static-element-interactions": "warn",
     "jsx-a11y/prefer-tag-over-role": "warn",
-    "jsx-a11y/role-has-required-aria-props": "warn"
+    "jsx-a11y/role-has-required-aria-props": "warn",
+    "vitest/valid-expect": [
+      "error",
+      {
+        "maxArgs": 2
+      }
+    ],
+    "vitest/expect-expect": [
+      "error",
+      {
+        "assertFunctionNames": [
+          "expect",
+          "expect*"
+        ]
+      }
+    ]
   },
   "ignorePatterns": [
     "dist",
