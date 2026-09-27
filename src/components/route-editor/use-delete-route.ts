@@ -1,21 +1,27 @@
-// STUB (Step 0) — owned by agent B. Replace this file's contents.
 import { useCallback } from 'react'
-import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { useRouter } from '@tanstack/react-router'
 import { toastUndo } from '@/components/shared'
 import { useActions } from '@/lib/openapi/selectors'
 import type { NodeId } from '@/lib/openapi/types'
 
-/** Deletes a route, offers undo, and leaves its page if it's being viewed. */
+/**
+ * Deletes a route right away with an Undo toast (BLUEPRINT §3 "Deletes") and
+ * leaves its page first if it's being viewed. The callback is stable: the
+ * current location is read when it runs.
+ */
 export function useDeleteRoute(): (id: NodeId) => void {
   const { deleteRoute } = useActions()
-  const navigate = useNavigate()
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const router = useRouter()
   return useCallback(
     (id: NodeId) => {
-      deleteRoute(id)
-      toastUndo('Route deleted.')
-      if (pathname === `/routes/${id}`) void navigate({ to: '/' })
+      const remove = () => {
+        deleteRoute(id)
+        toastUndo('Route deleted.')
+      }
+      // Leave first, so the page doesn't flash its "route is gone" state.
+      if (router.state.location.pathname === `/routes/${id}`) void router.navigate({ to: '/' }).then(remove)
+      else remove()
     },
-    [deleteRoute, navigate, pathname],
+    [deleteRoute, router],
   )
 }
