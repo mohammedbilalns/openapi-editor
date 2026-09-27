@@ -272,6 +272,25 @@ describe('editor store: undo / redo', () => {
     expect(summary()).toBe('List');
   });
 
+  it('keeps at most maxHistorySize undo steps, for every kind of edit', () => {
+    useEditorStore.setState({ maxHistorySize: 3 });
+    try {
+      for (let i = 1; i <= 10; i++) store().updateRoute(listPets.id, { summary: `s${i}` });
+      store().addTag({ name: 'extra' });
+      expect(store().history.length).toBeLessThanOrEqual(4);
+      let undos = 0;
+      while (store().canUndo()) {
+        store().undo();
+        undos++;
+      }
+      expect(undos).toBe(3);
+      expect(summary()).toBe('s8');
+      expect(doc().tags.map((t) => t.name)).toEqual(['pets']);
+    } finally {
+      useEditorStore.setState({ maxHistorySize: 50 });
+    }
+  });
+
   it('undo of an import restores the previous document', () => {
     const before = doc();
     const imported = createEmptyDocument();
