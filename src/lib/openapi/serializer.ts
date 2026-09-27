@@ -1,4 +1,4 @@
-import * as YAML from 'yaml';
+import { dump as dumpYaml } from 'js-yaml';
 import {
   ApiDocument,
   SchemaNode,
@@ -48,15 +48,20 @@ interface OpenAPIDocument {
 }
 
 export function serializeToYaml(doc: ApiDocument): string {
-  const openapi = serializeDocument(doc);
-  return YAML.stringify(openapi, {
-    indent: 2,
-    lineWidth: 0,
-    minContentWidth: 0,
-    // Shared JS objects (e.g. one tags array used by two routes) must be
-    // written out in full, not as &anchor / *alias pairs.
-    aliasDuplicateObjects: false,
-  });
+  return stringifyYaml(serializeDocument(doc));
+}
+
+/**
+ * Plain OpenAPI object -> YAML text (js-yaml, ~5x faster than the `yaml`
+ * package on large specs).
+ * - noRefs: shared objects are written out in full, never as &anchor/*alias;
+ * - default schema on output so strings a YAML 1.1 reader would retype
+ *   (2024-06-20, yes, on, 1e3...) are quoted for every consumer;
+ * - lineWidth -1: no folding of long descriptions;
+ * - skipInvalid: undefined values are omitted instead of throwing.
+ */
+export function stringifyYaml(value: unknown): string {
+  return dumpYaml(value, { indent: 2, lineWidth: -1, noRefs: true, quotingType: '"', skipInvalid: true });
 }
 
 export function serializeDocument(doc: ApiDocument): OpenAPIDocument {

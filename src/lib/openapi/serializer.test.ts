@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as YAML from 'yaml';
+import * as jsyaml from 'js-yaml';
 import { serializeDocument, serializeToYaml } from './serializer';
 import { createEmptyDocument, createRoute, createSchema, type ApiDocument, type SchemaNode } from './types';
 import { REALISTIC_SPEC_YAML } from '@/test/fixtures/realistic-spec';
@@ -256,6 +257,27 @@ components:
     const back = YAML.parse(text);
     expect(back.paths['/b'].post.tags).toEqual(['pets']);
     expect(back.paths['/b'].post.requestBody.content['application/json'].example).toEqual({ name: 'Rex' });
+  });
+
+  it('quotes strings that YAML 1.1 readers (e.g. js-yaml default schema) would retype', () => {
+    const doc = createEmptyDocument();
+    doc.info.version = '2024-06-20';
+    const r = createRoute('/x', 'get');
+    r.summary = 'yes';
+    r.operationId = 'on';
+    r.description = '0777';
+    doc.routes.set(r.id, r);
+    const yaml11 = jsyaml.load(serializeToYaml(doc)) as Json; // DEFAULT_SCHEMA: timestamps, 1.1-style values
+    expect(yaml11.info.version).toBe('2024-06-20');
+    expect(yaml11.paths['/x'].get).toMatchObject({ summary: 'yes', operationId: 'on', description: '0777' });
+  });
+
+  it('writes multi-line descriptions as readable block scalars', () => {
+    const doc = createEmptyDocument();
+    doc.info.description = 'Line one.\nLine two.\n';
+    const text = serializeToYaml(doc);
+    expect(text).toContain('description: |\n    Line one.\n    Line two.\n');
+    expect(YAML.parse(text).info.description).toBe('Line one.\nLine two.\n');
   });
 
   it('re-parses exported refs to the same targets', () => {

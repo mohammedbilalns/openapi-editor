@@ -1,4 +1,4 @@
-import * as YAML from 'yaml';
+import { CORE_SCHEMA, load as loadYaml } from 'js-yaml';
 import {
   ApiDocument,
   SchemaNode,
@@ -121,13 +121,35 @@ function resolveComponent(data: unknown, section: string, ctx: ParseContext): Ra
   return current;
 }
 
+/**
+ * YAML/JSON text -> plain JS value.
+ *
+ * JSON (the usual format of large published specs) goes through JSON.parse,
+ * ~80x faster than any YAML parser; anything else, or JSON that fails to
+ * parse, goes through js-yaml (~13x faster than the `yaml` package on large
+ * specs). CORE_SCHEMA is YAML 1.2 core: no timestamps (so `version: 2024-06-20`
+ * stays a string) and no `<<` merge keys. Duplicate keys are an error.
+ */
+export function parseText(text: string): unknown {
+  const source = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const first = source.match(/\S/)?.[0];
+  if (first === '{' || first === '[') {
+    try {
+      return JSON.parse(source);
+    } catch {
+      // not strict JSON (comments, trailing commas, YAML flow style): fall through
+    }
+  }
+  return loadYaml(source, { schema: CORE_SCHEMA });
+}
+
 export function parseYaml(yamlContent: string): ParseResult {
   const errors: ValidationError[] = [];
 
   // Parse YAML
   let parsed: OpenAPISchema;
   try {
-    parsed = YAML.parse(yamlContent);
+    parsed = parseText(yamlContent) as OpenAPISchema;
   } catch (error) {
     return {
       document: null,

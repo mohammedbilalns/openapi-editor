@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import * as YAML from 'yaml';
 import { parseYaml } from './parser';
+import { serializeToYaml } from './serializer';
 import { REALISTIC_SPEC_YAML } from '@/test/fixtures/realistic-spec';
 import { expectRefTo, inline, parseOk, route, schema } from '@/test/helpers';
 
@@ -265,6 +267,25 @@ describe('parseYaml: malformed and edge inputs', () => {
     const { doc, errors } = parseOk(json);
     expect(errors).toEqual([]);
     expect(route(doc, 'get', '/a').responses.get('200')?.description).toBe('ok');
+  });
+
+  it('parses the JSON form of a spec to the same model as the YAML form', () => {
+    const asJson = JSON.stringify(YAML.parse(REALISTIC_SPEC_YAML), null, 2);
+    const fromJson = parseOk(asJson);
+    const fromYaml = parseOk(REALISTIC_SPEC_YAML);
+    expect(fromJson.errors).toEqual(fromYaml.errors);
+    expect(serializeToYaml(fromJson.doc)).toBe(serializeToYaml(fromYaml.doc));
+  });
+
+  it('falls back to YAML for JSON-looking input that is not strict JSON, and handles a BOM', () => {
+    const { doc } = parseOk('﻿{openapi: 3.0.0, info: {title: Flow, version: "1"}, paths: {},}');
+    expect(doc.info.title).toBe('Flow');
+    expect(parseOk('﻿{"openapi": "3.0.0", "info": {"title": "Bom", "version": "1"}, "paths": {}}').doc.info.title).toBe('Bom');
+  });
+
+  it('rejects duplicate keys in YAML', () => {
+    const result = parseYaml('openapi: 3.0.0\ninfo: {title: A, version: "1"}\ninfo: {title: B, version: "1"}\npaths: {}');
+    expect(result.errors.map((e) => e.code)).toEqual(['YAML_PARSE_ERROR']);
   });
 
   it('rejects Swagger 2.0 with an error (the import dialog blocks on errors)', () => {
