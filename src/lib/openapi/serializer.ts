@@ -11,6 +11,7 @@ import {
   SecurityScheme,
   NodeId,
 } from './types';
+import { forEachRefInRoute, forEachRefInSchema } from './refs';
 
 // OpenAPI output types
 interface OpenAPIDocument {
@@ -47,8 +48,17 @@ interface OpenAPIDocument {
   security?: Array<Record<string, string[]>>;
 }
 
+/**
+ * ApiDocument -> YAML text.
+ *
+ * Incremental: the YAML of every operation and component schema is cached per
+ * node object, so after an edit only the changed nodes are re-emitted and the
+ * text is re-assembled by concatenation. This relies on the store's structural
+ * sharing (nodes are replaced, never mutated). Output is byte-identical to
+ * stringifyYaml(serializeDocument(doc)).
+ */
 export function serializeToYaml(doc: ApiDocument): string {
-  return stringifyYaml(serializeDocument(doc));
+  return emitIncremental(doc);
 }
 
 /**
@@ -65,6 +75,14 @@ export function stringifyYaml(value: unknown): string {
 }
 
 export function serializeDocument(doc: ApiDocument): OpenAPIDocument {
+  return buildDocument(doc, false);
+}
+
+/**
+ * With `shell`, component schema values are the SchemaNodes themselves and
+ * path items map methods to Routes (not serialized), for emitIncremental.
+ */
+function buildDocument(doc: ApiDocument, shell: boolean): OpenAPIDocument {
   const output: OpenAPIDocument = {
     openapi: '3.0.3',
     info: {
@@ -116,7 +134,7 @@ export function serializeDocument(doc: ApiDocument): OpenAPIDocument {
   // Serialize named schemas
   for (const [id, schema] of doc.schemas) {
     if (schema.name) {
-      schemas[schema.name] = serializeSchema(schema, doc);
+      schemas[schema.name] = shell ? schema : serializeSchema(schema, doc);
     }
   }
 
@@ -154,7 +172,7 @@ export function serializeDocument(doc: ApiDocument): OpenAPIDocument {
     const routes = pathGroups.get(path)!;
     output.paths[path] = {};
     for (const route of routes) {
-      output.paths[path][route.method] = serializeOperation(route, doc);
+      output.paths[path][route.method] = shell ? route : serializeOperation(route, doc);
     }
   }
 
@@ -467,4 +485,149 @@ function serializeSecurityScheme(scheme: SecurityScheme): Record<string, unknown
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Incremental YAML emission
+// ---------------------------------------------------------------------------
+
+interface Fragment {
+  text: string;
+  /** [schemaId, nameAtEmit, schemaId, nameAtEmit, ...] for every ref in the node */
+  deps: string[];
+}
+
+interface FragmentCache {
+  /** global inputs of every fragment: security scheme names and, when unnamed (inlined) schemas exist, all schema names */
+  context: string;
+  operations: WeakMap<Route, Fragment>;
+  schemas: WeakMap<SchemaNode, Fragment>;
+  keys: Map<string, string>;
+}
+
+let fragmentCache: FragmentCache | null = null;
+const nodeTokens = new WeakMap<object, number>();
+let nextNodeToken = 0;
+
+function nodeToken(node: object): number {
+  let token = nodeTokens.get(node);
+  if (token === undefined) {
+    token = nextNodeToken++;
+    nodeTokens.set(node, token);
+  }
+  return token;
+}
+
+function contextSignature(doc: ApiDocument): string {
+  const parts: string[] = [];
+  let hasUnnamed = false;
+  for (const schema of doc.schemas.values()) {
+    if (!schema.name) hasUnnamed = true;
+  }
+  if (hasUnnamed) {
+    // Refs to unnamed schemas are inlined (recursively), so any schema change
+    // may affect any fragment: fall back to invalidating on every rename.
+    for (const schema of doc.schemas.values()) {
+      parts.push(schema.id, schema.name ? schema.name : `#${nodeToken(schema)}`);
+    }
+  }
+  parts.push('|');
+  for (const scheme of doc.securitySchemes.values()) parts.push(scheme.id, scheme.name);
+  return parts.join('\u0000');
+}
+
+/** Indent every non-empty line (empty lines inside block scalars stay empty). */
+function indentLines(text: string, spaces: string): string {
+  return text.replace(/^(?=.)/gm, spaces);
+}
+
+/** Schema names this node's YAML embeds (in $ref strings). */
+function collectDeps(node: Route | SchemaNode, doc: ApiDocument, isRoute: boolean): string[] {
+  const deps: string[] = [];
+  const visit = (targetId: string) => {
+    deps.push(targetId, doc.schemas.get(targetId)?.name ?? '');
+  };
+  if (isRoute) forEachRefInRoute(node as Route, visit);
+  else forEachRefInSchema(node as SchemaNode, visit);
+  return deps;
+}
+
+function depsValid(fragment: Fragment, doc: ApiDocument): boolean {
+  const { deps } = fragment;
+  for (let i = 0; i < deps.length; i += 2) {
+    if ((doc.schemas.get(deps[i])?.name ?? '') !== deps[i + 1]) return false;
+  }
+  return true;
+}
+
+const NULL_SUFFIX = ': null\n';
+
+/** The YAML rendering of a mapping key, e.g. `/pets/{id}` or `"200"`; null for complex keys. */
+function keyText(cache: FragmentCache, key: string): string | null {
+  let text = cache.keys.get(key);
+  if (text === undefined) {
+    const line = stringifyYaml({ [key]: null });
+    if (!line.endsWith(NULL_SUFFIX) || line.startsWith('? ')) return null;
+    text = line.slice(0, -NULL_SUFFIX.length);
+    cache.keys.set(key, text);
+  }
+  return text;
+}
+
+function emitIncremental(doc: ApiDocument): string {
+  const context = contextSignature(doc);
+  if (!fragmentCache || fragmentCache.context !== context) {
+    fragmentCache = { context, operations: new WeakMap(), schemas: new WeakMap(), keys: new Map() };
+  }
+  const cache = fragmentCache;
+  const shell = buildDocument(doc, true) as unknown as Record<string, unknown>;
+  const out: string[] = [];
+
+  for (const [key, value] of Object.entries(shell)) {
+    if (key === 'paths') {
+      const paths = value as Record<string, Record<string, Route>>;
+      if (Object.keys(paths).length === 0) {
+        out.push('paths: {}\n');
+        continue;
+      }
+      out.push('paths:\n');
+      for (const [path, operations] of Object.entries(paths)) {
+        const pathKey = keyText(cache, path);
+        if (pathKey === null) return stringifyYaml(serializeDocument(doc));
+        out.push(`  ${pathKey}:\n`);
+        for (const [method, route] of Object.entries(operations)) {
+          let fragment = cache.operations.get(route);
+          if (fragment === undefined || !depsValid(fragment, doc)) {
+            fragment = {
+              text: indentLines(stringifyYaml({ [method]: serializeOperation(route, doc) }), '    '),
+              deps: collectDeps(route, doc, true),
+            };
+            cache.operations.set(route, fragment);
+          }
+          out.push(fragment.text);
+        }
+      }
+    } else if (key === 'components') {
+      const { schemas, ...rest } = value as { schemas?: Record<string, SchemaNode> };
+      out.push('components:\n');
+      if (schemas) {
+        out.push('  schemas:\n');
+        for (const [name, schema] of Object.entries(schemas)) {
+          let fragment = cache.schemas.get(schema);
+          if (fragment === undefined || !depsValid(fragment, doc)) {
+            fragment = {
+              text: indentLines(stringifyYaml({ [name]: serializeSchema(schema, doc) }), '    '),
+              deps: collectDeps(schema, doc, false),
+            };
+            cache.schemas.set(schema, fragment);
+          }
+          out.push(fragment.text);
+        }
+      }
+      if (Object.keys(rest).length > 0) out.push(indentLines(stringifyYaml(rest), '  '));
+    } else {
+      out.push(stringifyYaml({ [key]: value }));
+    }
+  }
+  return out.join('');
 }
