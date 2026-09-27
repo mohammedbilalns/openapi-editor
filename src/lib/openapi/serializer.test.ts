@@ -147,6 +147,23 @@ describe('serializeDocument: model -> OpenAPI mapping', () => {
     expect(Object.keys(back.paths['/x'].get.responses)).toEqual(['200']);
   });
 
+  it('never emits YAML anchors/aliases, even when model objects are shared', () => {
+    const doc = createEmptyDocument();
+    const sharedTags = ['pets'];
+    const sharedExample = { name: 'Rex' };
+    for (const p of ['/a', '/b']) {
+      const r = createRoute(p, 'post');
+      r.tags = sharedTags;
+      r.requestBody = { id: `b${p}`, required: true, content: new Map([['application/json', { schema: { kind: 'inline', schema: createSchema('object') }, example: sharedExample }]]) };
+      doc.routes.set(r.id, r);
+    }
+    const text = serializeToYaml(doc);
+    expect(text).not.toMatch(/[&*]a\d/);
+    const back = YAML.parse(text);
+    expect(back.paths['/b'].post.tags).toEqual(['pets']);
+    expect(back.paths['/b'].post.requestBody.content['application/json'].example).toEqual({ name: 'Rex' });
+  });
+
   it('re-parses exported refs to the same targets', () => {
     const { doc } = parseOk(REALISTIC_SPEC_YAML);
     const again = parseOk(serializeToYaml(doc)).doc;

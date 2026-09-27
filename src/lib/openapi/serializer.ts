@@ -50,6 +50,9 @@ export function serializeToYaml(doc: ApiDocument): string {
     indent: 2,
     lineWidth: 0,
     minContentWidth: 0,
+    // Shared JS objects (e.g. one tags array used by two routes) must be
+    // written out in full, not as &anchor / *alias pairs.
+    aliasDuplicateObjects: false,
   });
 }
 
