@@ -4,14 +4,11 @@ import {
   SchemaNode,
   Route,
   SchemaOrRef,
-  PropertyDef,
   ParameterDef,
   ResponseDef,
   RequestBody,
   MediaType,
   SecurityScheme,
-  Server,
-  Tag,
   InfoObject,
   NodeId,
   HttpMethod,
@@ -21,7 +18,7 @@ import {
   createEmptyDocument,
 } from './types';
 
-interface ParseResult {
+export interface ParseResult {
   document: ApiDocument | null;
   errors: ValidationError[];
 }
@@ -48,30 +45,77 @@ interface OpenAPISchema {
     description?: string;
   }>;
   paths?: Record<string, Record<string, unknown>>;
-  components?: {
-    schemas?: Record<string, unknown>;
-    securitySchemes?: Record<string, unknown>;
-  };
+  components?: Record<string, Record<string, unknown> | undefined>;
   tags?: Array<{
     name?: string;
     description?: string;
   }>;
 }
 
+type RawObject = Record<string, unknown>;
+
 // YAML leaves empty values as null (e.g. `items:` with nothing after it);
 // treat anything that is not an object as an empty object.
-function asObject(value: unknown): Record<string, unknown> {
+function asObject(value: unknown): RawObject {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
+    ? (value as RawObject)
     : {};
 }
 
-// Map to track schema names to IDs for $ref resolution
-const schemaNameToId = new Map<string, NodeId>();
+/**
+ * Per-parse state. Kept out of module scope so parseYaml is re-entrant and
+ * safe to run concurrently (e.g. in a Web Worker).
+ */
+interface ParseContext {
+  /** component schema name -> node id, for $ref resolution */
+  schemaNameToId: Map<string, NodeId>;
+  /** raw `components` object, for resolving parameter/response/... refs */
+  components: Record<string, RawObject>;
+  errors: ValidationError[];
+}
+
+const MAX_REF_HOPS = 16;
+
+/** Decode one JSON-pointer segment of a local $ref ("~1" -> "/", "~0" -> "~", %xx). */
+function decodePointerSegment(segment: string): string {
+  let decoded = segment;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    // keep as is
+  }
+  return decoded.replace(/~1/g, '/').replace(/~0/g, '~');
+}
+
+/**
+ * Follow `$ref: '#/components/<section>/<name>'` (possibly chained) to the raw
+ * component object. Non-ref input is returned as is. Returns null (and records
+ * a warning) when the reference cannot be resolved.
+ */
+function resolveComponent(data: unknown, section: string, ctx: ParseContext): RawObject | null {
+  let current = asObject(data);
+  for (let hops = 0; typeof current.$ref === 'string'; hops++) {
+    const ref = current.$ref;
+    const prefix = `#/components/${section}/`;
+    const target = ref.startsWith(prefix) && hops < MAX_REF_HOPS
+      ? ctx.components[section]?.[decodePointerSegment(ref.slice(prefix.length))]
+      : undefined;
+    if (target === undefined) {
+      ctx.errors.push({
+        code: 'UNRESOLVED_REF',
+        message: `Unresolved reference: ${ref}`,
+        severity: 'warning',
+        location: {},
+      });
+      return null;
+    }
+    current = asObject(target);
+  }
+  return current;
+}
 
 export function parseYaml(yamlContent: string): ParseResult {
   const errors: ValidationError[] = [];
-  schemaNameToId.clear();
 
   // Parse YAML
   let parsed: OpenAPISchema;
@@ -106,7 +150,7 @@ export function parseYaml(yamlContent: string): ParseResult {
   }
 
   // Validate OpenAPI version
-  if (!parsed.openapi || !parsed.openapi.startsWith('3.')) {
+  if (!parsed.openapi || !String(parsed.openapi).startsWith('3.')) {
     errors.push({
       code: 'INVALID_VERSION',
       message: `Unsupported OpenAPI version: ${parsed.openapi}. Only OpenAPI 3.x is supported.`,
@@ -114,6 +158,12 @@ export function parseYaml(yamlContent: string): ParseResult {
       location: { path: ['openapi'] },
     });
   }
+
+  const components: Record<string, RawObject> = {};
+  for (const [section, value] of Object.entries(asObject(parsed.components))) {
+    components[section] = asObject(value);
+  }
+  const ctx: ParseContext = { schemaNameToId: new Map(), components, errors };
 
   // Create document
   const doc = createEmptyDocument();
@@ -151,40 +201,36 @@ export function parseYaml(yamlContent: string): ParseResult {
   }
 
   // First pass: register all schema names for $ref resolution
-  if (parsed.components?.schemas) {
-    for (const name of Object.keys(parsed.components.schemas)) {
-      const id = generateId();
-      schemaNameToId.set(name, id);
-    }
+  const rawSchemas = components.schemas ?? {};
+  for (const name of Object.keys(rawSchemas)) {
+    ctx.schemaNameToId.set(name, generateId());
   }
 
   // Parse schemas
-  if (parsed.components?.schemas) {
-    for (const [name, schemaData] of Object.entries(parsed.components.schemas)) {
-      const id = schemaNameToId.get(name)!;
-      const schema = parseSchema(schemaData, name, id, errors);
-      doc.schemas.set(id, schema);
-    }
+  for (const [name, schemaData] of Object.entries(rawSchemas)) {
+    const id = ctx.schemaNameToId.get(name)!;
+    doc.schemas.set(id, parseSchema(schemaData, name, id, ctx));
   }
 
   // Parse security schemes
-  if (parsed.components?.securitySchemes) {
-    for (const [name, schemeData] of Object.entries(parsed.components.securitySchemes)) {
-      const scheme = parseSecurityScheme(name, schemeData, errors);
-      doc.securitySchemes.set(scheme.id, scheme);
-    }
+  for (const [name, schemeData] of Object.entries(components.securitySchemes ?? {})) {
+    const scheme = parseSecurityScheme(name, schemeData);
+    doc.securitySchemes.set(scheme.id, scheme);
   }
 
   // Parse paths
   if (parsed.paths) {
-    for (const [path, pathItem] of Object.entries(parsed.paths)) {
-      if (!pathItem || typeof pathItem !== 'object') continue;
+    for (const [path, pathItemData] of Object.entries(parsed.paths)) {
+      if (!pathItemData || typeof pathItemData !== 'object') continue;
+      const pathItem = asObject(pathItemData);
+      const pathParameters = Array.isArray(pathItem.parameters) ? pathItem.parameters : [];
 
-      for (const [method, operationData] of Object.entries(pathItem)) {
+      for (const [key, operationData] of Object.entries(pathItem)) {
+        const method = key.toLowerCase();
         if (!isHttpMethod(method)) continue;
         if (!operationData || typeof operationData !== 'object') continue;
 
-        const route = parseOperation(path, method, operationData as Record<string, unknown>, doc, errors);
+        const route = parseOperation(path, method, operationData as RawObject, pathParameters, ctx);
         doc.routes.set(route.id, route);
       }
     }
@@ -240,12 +286,7 @@ function parseInfo(info: OpenAPISchema['info'], errors: ValidationError[]): Info
   return result;
 }
 
-function parseSchema(
-  data: unknown,
-  name: string | undefined,
-  id: NodeId,
-  errors: ValidationError[]
-): SchemaNode {
+function parseSchema(data: unknown, name: string | undefined, id: NodeId, ctx: ParseContext): SchemaNode {
   const schemaData = asObject(data);
 
   // Determine schema type
@@ -281,15 +322,15 @@ function parseSchema(
   // Parse based on type
   if (type === 'object' && schemaData.properties) {
     schema.properties = new Map();
-    const props = schemaData.properties as Record<string, unknown>;
-    const required = (schemaData.required as string[]) || [];
+    const props = asObject(schemaData.properties);
+    const required = Array.isArray(schemaData.required) ? (schemaData.required as string[]) : [];
+    const requiredSet = new Set(required);
 
     for (const [propName, propData] of Object.entries(props)) {
-      const propSchema = parseSchemaOrRef(propData, errors);
       schema.properties.set(propName, {
         name: propName,
-        schema: propSchema,
-        required: required.includes(propName),
+        schema: parseSchemaOrRef(propData, ctx),
+        required: requiredSet.has(propName),
         description: asObject(propData).description as string | undefined,
       });
     }
@@ -298,20 +339,20 @@ function parseSchema(
   }
 
   if (type === 'array' && schemaData.items) {
-    schema.items = parseSchemaOrRef(schemaData.items, errors);
+    schema.items = parseSchemaOrRef(schemaData.items, ctx);
   }
 
   if (type === 'enum' && schemaData.enum) {
     schema.enumValues = schemaData.enum as string[];
   }
 
-  if (['oneOf', 'anyOf', 'allOf'].includes(type)) {
-    const variants = schemaData[type] as unknown[];
+  if (type === 'oneOf' || type === 'anyOf' || type === 'allOf') {
+    const variants = schemaData[type];
     if (Array.isArray(variants)) {
-      schema.variants = variants.map((v) => parseSchemaOrRef(v, errors));
+      schema.variants = variants.map((v) => parseSchemaOrRef(v, ctx));
     }
     if (type === 'oneOf' && schemaData.discriminator) {
-      const disc = schemaData.discriminator as Record<string, unknown>;
+      const disc = asObject(schemaData.discriminator);
       schema.discriminator = {
         propertyName: disc.propertyName as string,
       };
@@ -331,41 +372,35 @@ function parseSchema(
   return schema;
 }
 
-function parseSchemaOrRef(data: unknown, errors: ValidationError[]): SchemaOrRef {
+function parseSchemaOrRef(data: unknown, ctx: ParseContext): SchemaOrRef {
   const schemaData = asObject(data);
 
   // Check for $ref
-  if (schemaData.$ref && typeof schemaData.$ref === 'string') {
+  if (typeof schemaData.$ref === 'string') {
     const refPath = schemaData.$ref;
     const match = refPath.match(/^#\/components\/schemas\/(.+)$/);
     if (match) {
-      const refName = match[1];
-      const targetId = schemaNameToId.get(refName);
+      const targetId = ctx.schemaNameToId.get(decodePointerSegment(match[1]));
       if (targetId) {
         return { kind: 'ref', targetId };
       }
-      errors.push({
-        code: 'UNRESOLVED_REF',
-        message: `Unresolved reference: ${refPath}`,
-        severity: 'warning',
-        location: {},
-      });
     }
+    ctx.errors.push({
+      code: 'UNRESOLVED_REF',
+      message: `Unresolved reference: ${refPath}`,
+      severity: 'warning',
+      location: {},
+    });
   }
 
   // Inline schema
-  const inlineId = generateId();
   return {
     kind: 'inline',
-    schema: parseSchema(data, undefined, inlineId, errors),
+    schema: parseSchema(schemaData, undefined, generateId(), ctx),
   };
 }
 
-function parseSecurityScheme(
-  name: string,
-  data: unknown,
-  errors: ValidationError[]
-): SecurityScheme {
+function parseSecurityScheme(name: string, data: unknown): SecurityScheme {
   const schemeData = asObject(data);
 
   const scheme: SecurityScheme = {
@@ -397,18 +432,29 @@ function parseSecurityScheme(
   return scheme;
 }
 
+/** Resolve and parse a list of raw parameters, skipping empty or unresolvable entries. */
+function parseParameterList(list: unknown[], ctx: ParseContext): ParameterDef[] {
+  const result: ParameterDef[] = [];
+  for (const raw of list) {
+    if (raw === null || typeof raw !== 'object') continue;
+    const resolved = resolveComponent(raw, 'parameters', ctx);
+    if (resolved) result.push(parseParameter(resolved, ctx));
+  }
+  return result;
+}
+
 function parseOperation(
   path: string,
   method: HttpMethod,
-  data: Record<string, unknown>,
-  doc: ApiDocument,
-  errors: ValidationError[]
+  data: RawObject,
+  pathParameters: unknown[],
+  ctx: ParseContext
 ): Route {
   const route: Route = {
     id: generateId(),
     path,
     method,
-    tags: (data.tags as string[]) || [],
+    tags: Array.isArray(data.tags) ? (data.tags as string[]) : [],
     parameters: [],
     responses: new Map(),
   };
@@ -426,24 +472,24 @@ function parseOperation(
     route.deprecated = true;
   }
 
-  // Parse parameters
-  if (data.parameters && Array.isArray(data.parameters)) {
-    route.parameters = data.parameters
-      .filter((p) => p !== null && typeof p === 'object')
-      .map((p) => parseParameter(p, errors));
-  }
+  // Parameters: path-item level ones apply to every operation unless the
+  // operation redefines the same name + location.
+  const own = parseParameterList(Array.isArray(data.parameters) ? data.parameters : [], ctx);
+  const inherited = parseParameterList(pathParameters, ctx).filter(
+    (p) => !own.some((o) => o.name === p.name && o.in === p.in)
+  );
+  route.parameters = [...inherited, ...own];
 
   // Parse request body
   if (data.requestBody) {
-    route.requestBody = parseRequestBody(asObject(data.requestBody), errors);
+    const body = resolveComponent(data.requestBody, 'requestBodies', ctx);
+    if (body) route.requestBody = parseRequestBody(body, ctx);
   }
 
   // Parse responses
-  if (data.responses && typeof data.responses === 'object') {
-    for (const [statusCode, responseData] of Object.entries(data.responses)) {
-      const response = parseResponse(asObject(responseData), errors);
-      route.responses.set(statusCode, response);
-    }
+  for (const [statusCode, responseData] of Object.entries(asObject(data.responses))) {
+    const resolved = resolveComponent(responseData, 'responses', ctx);
+    route.responses.set(statusCode, parseResponse(resolved ?? {}, ctx));
   }
 
   // Ensure at least one response
@@ -457,67 +503,68 @@ function parseOperation(
   return route;
 }
 
-function parseParameter(data: unknown, errors: ValidationError[]): ParameterDef {
-  const paramData = asObject(data);
-
+function parseParameter(paramData: RawObject, ctx: ParseContext): ParameterDef {
   return {
     id: generateId(),
     name: (paramData.name as string) || 'param',
     in: (paramData.in as ParameterDef['in']) || 'query',
     required: (paramData.required as boolean) || false,
     schema: paramData.schema
-      ? parseSchemaOrRef(paramData.schema, errors)
+      ? parseSchemaOrRef(paramData.schema, ctx)
       : { kind: 'inline', schema: { id: generateId(), type: 'string' } },
     description: paramData.description as string | undefined,
     example: paramData.example,
   };
 }
 
-function parseRequestBody(data: Record<string, unknown>, errors: ValidationError[]): RequestBody {
-  const content = new Map<string, MediaType>();
-
-  if (data.content && typeof data.content === 'object') {
-    for (const [contentType, mediaData] of Object.entries(data.content)) {
-      const media = asObject(mediaData);
-      content.set(contentType, {
-        schema: media.schema
-          ? parseSchemaOrRef(media.schema, errors)
-          : { kind: 'inline', schema: { id: generateId(), type: 'object' } },
-        example: media.example,
-      });
-    }
+function parseContent(content: unknown, ctx: ParseContext, emptySchemaType: SchemaNode['type']): Map<string, MediaType> {
+  const result = new Map<string, MediaType>();
+  for (const [contentType, mediaData] of Object.entries(asObject(content))) {
+    const media = asObject(mediaData);
+    result.set(contentType, {
+      schema: media.schema
+        ? parseSchemaOrRef(media.schema, ctx)
+        : { kind: 'inline', schema: { id: generateId(), type: emptySchemaType } },
+      example: media.example,
+    });
   }
+  return result;
+}
 
+function parseRequestBody(data: RawObject, ctx: ParseContext): RequestBody {
   return {
     id: generateId(),
     description: data.description as string | undefined,
     required: (data.required as boolean) || false,
-    content,
+    content: parseContent(data.content, ctx, 'object'),
   };
 }
 
-function parseResponse(data: Record<string, unknown>, errors: ValidationError[]): ResponseDef {
+function parseResponse(data: RawObject, ctx: ParseContext): ResponseDef {
   const response: ResponseDef = {
     id: generateId(),
     description: (data.description as string) || 'Response',
   };
 
   if (data.content && typeof data.content === 'object') {
-    response.content = new Map();
-    for (const [contentType, mediaData] of Object.entries(data.content)) {
-      const media = asObject(mediaData);
-      response.content.set(contentType, {
-        schema: media.schema
-          ? parseSchemaOrRef(media.schema, errors)
-          : { kind: 'inline', schema: { id: generateId(), type: 'object' } },
-        example: media.example,
-      });
+    response.content = parseContent(data.content, ctx, 'object');
+  }
+
+  if (data.headers && typeof data.headers === 'object') {
+    const headers = new Map<string, ParameterDef>();
+    for (const [headerName, headerData] of Object.entries(asObject(data.headers))) {
+      const resolved = resolveComponent(headerData, 'headers', ctx);
+      if (!resolved) continue;
+      headers.set(headerName, parseParameter({ ...resolved, name: headerName, in: 'header' }, ctx));
     }
+    if (headers.size > 0) response.headers = headers;
   }
 
   return response;
 }
 
+const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
+
 function isHttpMethod(method: string): method is HttpMethod {
-  return ['get', 'post', 'put', 'delete', 'patch', 'options', 'head'].includes(method.toLowerCase());
+  return HTTP_METHODS.has(method);
 }

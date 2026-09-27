@@ -134,6 +134,44 @@ describe('parseYaml: realistic spec', () => {
     expect(inline(health.responses.get('200')!.content!.get('text/plain')!.schema)).toMatchObject({ type: 'string', example: 'ok' });
   });
 
+  it('applies path-level parameters to every operation of the path', () => {
+    for (const method of ['get', 'delete'] as const) {
+      const r = route(doc, method, '/pets/{petId}');
+      const petId = r.parameters.find((p) => p.name === 'petId');
+      expect(petId, method).toMatchObject({ in: 'path', required: true, description: 'The pet id' });
+      expect(inline(petId!.schema).format).toBe('uuid');
+    }
+    // ids are per operation so editing one does not edit the other
+    expect(route(doc, 'get', '/pets/{petId}').parameters[0].id).not.toBe(route(doc, 'delete', '/pets/{petId}').parameters[0].id);
+  });
+
+  it('resolves #/components/parameters refs', () => {
+    const trace = route(doc, 'get', '/pets').parameters.find((p) => p.in === 'header');
+    expect(trace).toMatchObject({ name: 'X-Trace-Id', in: 'header', required: false });
+    expect(inline(trace!.schema).type).toBe('string');
+    expect(route(doc, 'get', '/pets').parameters.map((p) => p.name)).toEqual(['limit', 'status', 'X-Trace-Id']);
+  });
+
+  it('resolves #/components/responses refs', () => {
+    const shared = [
+      route(doc, 'get', '/pets').responses.get('default'),
+      route(doc, 'post', '/pets').responses.get('400'),
+      route(doc, 'get', '/pets/{petId}').responses.get('404'),
+    ];
+    for (const r of shared) {
+      expect(r?.description).toBe('Error payload');
+      expectRefTo(doc, r?.content?.get('application/json')?.schema, 'Error');
+    }
+  });
+
+  it('parses response headers', () => {
+    const headers = route(doc, 'get', '/pets').responses.get('200')!.headers!;
+    expect(Array.from(headers.keys())).toEqual(['X-Rate-Limit-Remaining']);
+    const h = headers.get('X-Rate-Limit-Remaining')!;
+    expect(h).toMatchObject({ name: 'X-Rate-Limit-Remaining', in: 'header', description: 'Requests left' });
+    expect(inline(h.schema).type).toBe('integer');
+  });
+
   it('parses http, apiKey and openIdConnect security schemes', () => {
     const byName = new Map(Array.from(doc.securitySchemes.values()).map((s) => [s.name, s]));
     expect(Array.from(byName.keys())).toEqual(['bearerAuth', 'apiKey', 'oauth', 'oidc']);
@@ -219,6 +257,64 @@ paths:
     get: {responses: {'200': {description: ok}}}
 `);
     expect(doc.routes.size).toBe(1);
+  });
+
+  it('lets an operation parameter override a path-level one with the same name and location', () => {
+    const { doc } = parseOk(`
+openapi: 3.0.0
+info: {title: T, version: '1'}
+paths:
+  /a/{id}:
+    parameters:
+      - {name: id, in: path, required: true, description: from path, schema: {type: string}}
+      - {name: v, in: query, schema: {type: string}}
+    get:
+      parameters:
+        - {name: id, in: path, required: true, description: from operation, schema: {type: integer}}
+      responses: {'200': {description: ok}}
+`);
+    const params = route(doc, 'get', '/a/{id}').parameters;
+    expect(params.map((p) => `${p.in}:${p.name}:${p.description ?? ''}`)).toEqual(['query:v:', 'path:id:from operation']);
+  });
+
+  it('follows chained component refs and warns (without inventing a parameter) when unresolved', () => {
+    const { doc, errors } = parseOk(`
+openapi: 3.0.0
+info: {title: T, version: '1'}
+paths:
+  /a:
+    get:
+      parameters:
+        - $ref: '#/components/parameters/Alias'
+        - $ref: '#/components/parameters/Nope'
+      requestBody:
+        $ref: '#/components/requestBodies/Body'
+      responses:
+        '200': {$ref: '#/components/responses/Missing'}
+components:
+  parameters:
+    Alias: {$ref: '#/components/parameters/Real'}
+    Real: {name: page, in: query, schema: {type: integer}}
+  requestBodies:
+    Body:
+      required: true
+      content:
+        text/plain: {schema: {type: string}}
+`);
+    const r = route(doc, 'get', '/a');
+    expect(r.parameters.map((p) => p.name)).toEqual(['page']);
+    expect(r.requestBody?.required).toBe(true);
+    expect(r.requestBody?.content.has('text/plain')).toBe(true);
+    expect(r.responses.has('200')).toBe(true);
+    expect(errors.map((e) => `${e.code}:${e.message}`)).toEqual([
+      'UNRESOLVED_REF:Unresolved reference: #/components/parameters/Nope',
+      'UNRESOLVED_REF:Unresolved reference: #/components/responses/Missing',
+    ]);
+  });
+
+  it('normalises upper-case method keys', () => {
+    const { doc } = parseOk("openapi: 3.0.0\ninfo: {title: T, version: '1'}\npaths:\n  /a:\n    GET: {responses: {'200': {description: ok}}}\n");
+    expect(Array.from(doc.routes.values()).map((r) => r.method)).toEqual(['get']);
   });
 
   it('tolerates empty (null) values where objects are expected instead of throwing', () => {

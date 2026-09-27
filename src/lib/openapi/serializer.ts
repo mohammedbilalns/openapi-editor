@@ -361,6 +361,19 @@ function serializeResponse(response: ResponseDef, doc: ApiDocument): Record<stri
     description: response.description,
   };
 
+  if (response.headers && response.headers.size > 0) {
+    const headers: Record<string, unknown> = {};
+    for (const [name, header] of response.headers) {
+      const out: Record<string, unknown> = {};
+      if (header.description) out.description = header.description;
+      if (header.required) out.required = true;
+      out.schema = serializeSchemaOrRef(header.schema, doc);
+      if (header.example !== undefined) out.example = header.example;
+      headers[name] = out;
+    }
+    result.headers = headers;
+  }
+
   if (response.content && response.content.size > 0) {
     const content: Record<string, unknown> = {};
     for (const [contentType, media] of response.content) {

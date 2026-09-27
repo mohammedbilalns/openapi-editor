@@ -56,6 +56,21 @@ describe('serializeToYaml: realistic spec round trip', () => {
     expect(out.paths['/health'].get.responses).toEqual(original.paths['/health'].get.responses);
   });
 
+  it('keeps path-level and component parameters (inlined per operation)', () => {
+    const pathParam = original.paths['/pets/{petId}'].parameters[0];
+    expect(out.paths['/pets/{petId}'].get.parameters).toEqual([pathParam]);
+    expect(out.paths['/pets/{petId}'].delete.parameters).toEqual([pathParam]);
+    expect(out.paths['/pets'].get.parameters[2]).toEqual({ name: 'X-Trace-Id', in: 'header', schema: { type: 'string' } });
+  });
+
+  it('keeps component responses (inlined) and response headers', () => {
+    const errorResponse = original.components.responses.Error;
+    expect(out.paths['/pets'].get.responses.default).toEqual(errorResponse);
+    expect(out.paths['/pets'].post.responses['400']).toEqual(errorResponse);
+    expect(out.paths['/pets/{petId}'].get.responses['404']).toEqual(errorResponse);
+    expect(out.paths['/pets'].get.responses['200']).toEqual(original.paths['/pets'].get.responses['200']);
+  });
+
   it('keeps http, apiKey and openIdConnect security schemes', () => {
     for (const name of ['bearerAuth', 'apiKey', 'oidc']) {
       expect(out.components.securitySchemes[name], name).toEqual(original.components.securitySchemes[name]);
