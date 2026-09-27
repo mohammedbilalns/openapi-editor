@@ -165,6 +165,7 @@ components:
             id:
               type: string
               format: uuid
+              readOnly: true
               example: 7f1c4ce0-0000-4000-8000-000000000000
             tags:
               type: array
@@ -173,6 +174,7 @@ components:
     NewPet:
       type: object
       description: A pet to create
+      additionalProperties: false
       required: [name, kind]
       properties:
         name:
@@ -221,6 +223,7 @@ components:
           type: boolean
     Cat:
       type: object
+      title: Cat
       properties:
         type:
           type: string
@@ -246,6 +249,7 @@ components:
           type: string
     Error:
       type: object
+      x-internal: true
       required: [code, message]
       properties:
         code:

@@ -33,6 +33,7 @@ interface OpenAPIDocument {
   servers?: Array<{
     url: string;
     description?: string;
+    variables?: Record<string, unknown>;
   }>;
   paths: Record<string, Record<string, unknown>>;
   components?: {
@@ -91,6 +92,7 @@ export function serializeDocument(doc: ApiDocument): OpenAPIDocument {
     output.servers = doc.servers.map((s) => ({
       url: s.url,
       ...(s.description && { description: s.description }),
+      ...(s.variables && Object.keys(s.variables).length > 0 && { variables: s.variables }),
     }));
   }
 
@@ -154,37 +156,51 @@ export function serializeDocument(doc: ApiDocument): OpenAPIDocument {
   return output;
 }
 
+function inferEnumType(values: unknown[] | undefined): NonNullable<SchemaNode['enumType']> {
+  if (values && values.length > 0) {
+    if (values.every((v) => typeof v === 'number')) {
+      return values.every((v) => Number.isInteger(v)) ? 'integer' : 'number';
+    }
+    if (values.every((v) => typeof v === 'boolean')) return 'boolean';
+  }
+  return 'string';
+}
+
 function serializeSchema(schema: SchemaNode, doc: ApiDocument): Record<string, unknown> {
+  // An unresolved reference imported verbatim (e.g. to an external file)
+  if (schema.extraKeywords && typeof schema.extraKeywords.$ref === 'string') {
+    return { ...schema.extraKeywords };
+  }
+
   const result: Record<string, unknown> = {};
 
-  // Handle composition types
   if (schema.type === 'oneOf' || schema.type === 'anyOf' || schema.type === 'allOf') {
+    // Composition types
     if (schema.variants && schema.variants.length > 0) {
       result[schema.type] = schema.variants.map((v) => serializeSchemaOrRef(v, doc));
     }
-    if (schema.type === 'oneOf' && schema.discriminator?.propertyName) {
-      result.discriminator = { propertyName: schema.discriminator.propertyName };
+    if (schema.discriminator?.propertyName) {
+      const discriminator: Record<string, unknown> = { propertyName: schema.discriminator.propertyName };
+      if (schema.discriminator.mapping && Object.keys(schema.discriminator.mapping).length > 0) {
+        discriminator.mapping = schema.discriminator.mapping;
+      }
+      result.discriminator = discriminator;
     }
     if (schema.description) {
       result.description = schema.description;
     }
-    return result;
-  }
-
-  // Handle enum
-  if (schema.type === 'enum') {
-    result.type = 'string';
+  } else if (schema.type === 'enum') {
+    result.type = schema.enumType ?? inferEnumType(schema.enumValues);
+    if (schema.format) {
+      result.format = schema.format;
+    }
     if (schema.enumValues && schema.enumValues.length > 0) {
       result.enum = schema.enumValues;
     }
     if (schema.description) {
       result.description = schema.description;
     }
-    return result;
-  }
-
-  // Handle array
-  if (schema.type === 'array') {
+  } else if (schema.type === 'array') {
     result.type = 'array';
     if (schema.items) {
       result.items = serializeSchemaOrRef(schema.items, doc);
@@ -192,18 +208,14 @@ function serializeSchema(schema: SchemaNode, doc: ApiDocument): Record<string, u
     if (schema.description) {
       result.description = schema.description;
     }
-    return result;
-  }
-
-  // Handle object
-  if (schema.type === 'object') {
+  } else if (schema.type === 'object') {
     result.type = 'object';
     if (schema.properties && schema.properties.size > 0) {
       const props: Record<string, unknown> = {};
       for (const [name, prop] of schema.properties) {
         const propSchema = serializeSchemaOrRef(prop.schema, doc);
         if (prop.description) {
-          (propSchema as Record<string, unknown>).description = prop.description;
+          propSchema.description = prop.description;
         }
         props[name] = propSchema;
       }
@@ -215,38 +227,46 @@ function serializeSchema(schema: SchemaNode, doc: ApiDocument): Record<string, u
     if (schema.description) {
       result.description = schema.description;
     }
-    return result;
+  } else {
+    // Primitives
+    result.type = schema.type;
+    if (schema.description) {
+      result.description = schema.description;
+    }
+    if (schema.format) {
+      result.format = schema.format;
+    }
+    if (schema.minimum !== undefined) {
+      result.minimum = schema.minimum;
+    }
+    if (schema.maximum !== undefined) {
+      result.maximum = schema.maximum;
+    }
+    if (schema.minLength !== undefined) {
+      result.minLength = schema.minLength;
+    }
+    if (schema.maxLength !== undefined) {
+      result.maxLength = schema.maxLength;
+    }
+    if (schema.pattern) {
+      result.pattern = schema.pattern;
+    }
   }
 
-  // Handle primitives
-  result.type = schema.type;
-
-  if (schema.description) {
-    result.description = schema.description;
-  }
-  if (schema.format) {
-    result.format = schema.format;
-  }
-  if (schema.minimum !== undefined) {
-    result.minimum = schema.minimum;
-  }
-  if (schema.maximum !== undefined) {
-    result.maximum = schema.maximum;
-  }
-  if (schema.minLength !== undefined) {
-    result.minLength = schema.minLength;
-  }
-  if (schema.maxLength !== undefined) {
-    result.maxLength = schema.maxLength;
-  }
-  if (schema.pattern) {
-    result.pattern = schema.pattern;
+  // Keywords valid for every schema kind
+  if (schema.nullable) {
+    result.nullable = true;
   }
   if (schema.example !== undefined) {
     result.example = schema.example;
   }
   if (schema.default !== undefined) {
     result.default = schema.default;
+  }
+  if (schema.extraKeywords) {
+    for (const [key, value] of Object.entries(schema.extraKeywords)) {
+      if (!(key in result)) result[key] = value;
+    }
   }
 
   return result;

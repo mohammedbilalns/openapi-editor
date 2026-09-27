@@ -83,6 +83,9 @@ export interface SerializedSchema {
   maxLength?: number;
   pattern?: string;
   discriminator?: unknown;
+  nullable?: boolean;
+  enumType?: string;
+  extraKeywords?: Record<string, unknown>;
 }
 
 /**

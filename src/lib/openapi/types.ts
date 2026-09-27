@@ -48,6 +48,18 @@ export interface SchemaNode {
     propertyName: string;
     mapping?: Record<string, string>;
   };
+  /** OpenAPI 3.0 `nullable` (3.1 `type: [T, 'null']` is imported as this) */
+  nullable?: boolean;
+  /**
+   * JSON type of the values of an `enum` schema. Undefined means "infer from
+   * the values" (editor-made enums hold strings).
+   */
+  enumType?: 'string' | 'integer' | 'number' | 'boolean';
+  /**
+   * Schema keywords the editor does not model (readOnly, additionalProperties,
+   * title, minItems, x-*, ...), kept verbatim so import/export is lossless.
+   */
+  extraKeywords?: Record<string, unknown>;
 }
 
 export interface ParameterDef {

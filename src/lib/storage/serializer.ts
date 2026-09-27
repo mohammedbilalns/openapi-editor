@@ -101,28 +101,13 @@ function deserializeRoute(serialized: SerializedRoute): Route {
 }
 
 /**
- * Serialize a SchemaNode (convert properties Map to array)
+ * Serialize a SchemaNode (convert properties Map to array).
+ * Spreads the node so fields added to SchemaNode later are persisted too.
  */
 function serializeSchema(schema: SchemaNode): SerializedSchema {
   return {
-    id: schema.id,
-    name: schema.name,
-    type: schema.type,
-    description: schema.description,
+    ...schema,
     properties: schema.properties ? Array.from(schema.properties.entries()) : undefined,
-    items: schema.items,
-    variants: schema.variants,
-    enumValues: schema.enumValues,
-    required: schema.required,
-    format: schema.format,
-    example: schema.example,
-    default: schema.default,
-    minimum: schema.minimum,
-    maximum: schema.maximum,
-    minLength: schema.minLength,
-    maxLength: schema.maxLength,
-    pattern: schema.pattern,
-    discriminator: schema.discriminator,
   };
 }
 
@@ -131,24 +116,13 @@ function serializeSchema(schema: SchemaNode): SerializedSchema {
  */
 function deserializeSchema(serialized: SerializedSchema): SchemaNode {
   return {
-    id: serialized.id,
-    name: serialized.name,
+    ...serialized,
     type: serialized.type as SchemaNode['type'],
-    description: serialized.description,
     properties: serialized.properties ? new Map(serialized.properties as [string, PropertyDef][]) : undefined,
     items: serialized.items as SchemaNode['items'],
     variants: serialized.variants as SchemaNode['variants'],
-    enumValues: serialized.enumValues,
-    required: serialized.required,
-    format: serialized.format,
-    example: serialized.example,
-    default: serialized.default,
-    minimum: serialized.minimum,
-    maximum: serialized.maximum,
-    minLength: serialized.minLength,
-    maxLength: serialized.maxLength,
-    pattern: serialized.pattern,
     discriminator: serialized.discriminator as SchemaNode['discriminator'],
+    enumType: serialized.enumType as SchemaNode['enumType'],
   };
 }
 

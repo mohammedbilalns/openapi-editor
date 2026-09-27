@@ -28,11 +28,31 @@ describe('serializeToYaml: realistic spec round trip', () => {
     expect(ops(out).sort()).toEqual(ops(original).sort());
   });
 
-  it('keeps every component schema, byte-for-byte for the fully modelled ones', () => {
+  it('keeps every component schema exactly (nullable, typed enums, defaults, mappings, extra keywords)', () => {
     expect(Object.keys(out.components.schemas)).toEqual(Object.keys(original.components.schemas));
-    for (const name of ['Dog', 'Cat', 'Tag', 'TagObject', 'Error']) {
+    for (const name of Object.keys(original.components.schemas)) {
       expect(out.components.schemas[name], name).toEqual(original.components.schemas[name]);
     }
+  });
+
+  it('is lossless apart from documented normalisations', () => {
+    // Normalisations: version pinned to 3.0.3, components.parameters/responses
+    // inlined where used, path-level parameters copied into each operation,
+    // parameters' `required: false` omitted.
+    const expected = structuredClone(original);
+    expected.openapi = '3.0.3';
+    const errorResponse = expected.components.responses.Error;
+    delete expected.components.parameters;
+    delete expected.components.responses;
+    const petParams = expected.paths['/pets/{petId}'].parameters;
+    delete expected.paths['/pets/{petId}'].parameters;
+    expected.paths['/pets/{petId}'].get.parameters = petParams;
+    expected.paths['/pets/{petId}'].delete.parameters = petParams;
+    expected.paths['/pets/{petId}'].get.responses['404'] = errorResponse;
+    expected.paths['/pets'].get.parameters[2] = { name: 'X-Trace-Id', in: 'header', schema: { type: 'string' } };
+    expected.paths['/pets'].get.responses.default = errorResponse;
+    expected.paths['/pets'].post.responses['400'] = errorResponse;
+    expect(out).toEqual(expected);
   });
 
   it('keeps $refs, allOf members and arrays of refs', () => {
@@ -163,6 +183,43 @@ describe('serializeDocument: model -> OpenAPI mapping', () => {
     const out = exported(doc);
     expect(out.paths['/a'].get).not.toHaveProperty('security'); // falls back to root security
     expect(out.paths['/b'].get.security).toEqual([{ bearer: [] }]);
+  });
+
+  it('emits the enum value type (string for editor-made enums, inferred for untyped ones)', () => {
+    const made = createSchema('enum', 'Made');
+    made.enumValues = ['a', 'b'];
+    const untyped = createSchema('enum', 'Untyped');
+    untyped.enumValues = [1, 2] as unknown as string[];
+    const typed = createSchema('enum', 'Typed');
+    typed.enumValues = [1.5, 2] as unknown as string[];
+    typed.enumType = 'number';
+    const out = serializeDocument(docWith(made, untyped, typed)) as Json;
+    expect(out.components.schemas.Made).toEqual({ type: 'string', enum: ['a', 'b'] });
+    expect(out.components.schemas.Untyped).toEqual({ type: 'integer', enum: [1, 2] });
+    expect(out.components.schemas.Typed).toEqual({ type: 'number', enum: [1.5, 2] });
+  });
+
+  it('modelled fields win over extra keywords with the same name', () => {
+    const s = createSchema('string', 'S');
+    s.format = 'email';
+    s.extraKeywords = { format: 'stale', readOnly: true };
+    expect((serializeDocument(docWith(s)) as Json).components.schemas.S).toEqual({ type: 'string', format: 'email', readOnly: true });
+  });
+
+  it('exports unresolvable (e.g. external) refs verbatim', () => {
+    const { doc, errors } = parseOk(`
+openapi: 3.0.0
+info: {title: T, version: '1'}
+paths: {}
+components:
+  schemas:
+    Local:
+      type: object
+      properties:
+        ext: {$ref: 'common.yaml#/components/schemas/Money'}
+`);
+    expect(errors.map((e) => e.code)).toEqual(['UNRESOLVED_REF']);
+    expect(exported(doc).components.schemas.Local.properties.ext).toEqual({ $ref: 'common.yaml#/components/schemas/Money' });
   });
 
   it('omits empty optional sections', () => {

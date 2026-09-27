@@ -97,6 +97,33 @@ describe('parseYaml: realistic spec', () => {
     expect(status.default).toBe('available');
   });
 
+  it('keeps nullable, typed enums and discriminator mappings', () => {
+    const birthday = inline(schema(doc, 'NewPet').properties!.get('birthday')!.schema);
+    expect(birthday.nullable).toBe(true);
+    const priority = schema(doc, 'Priority');
+    expect(priority).toMatchObject({ type: 'enum', enumType: 'integer', enumValues: [1, 2, 3] });
+    expect(schema(doc, 'PetKind').discriminator).toEqual({
+      propertyName: 'type',
+      mapping: { dog: '#/components/schemas/Dog', cat: '#/components/schemas/Cat' },
+    });
+  });
+
+  it('keeps schema keywords the editor does not model', () => {
+    expect(schema(doc, 'NewPet').extraKeywords).toEqual({ additionalProperties: false });
+    expect(schema(doc, 'Cat').extraKeywords).toEqual({ title: 'Cat' });
+    expect(schema(doc, 'Error').extraKeywords).toEqual({ 'x-internal': true });
+    const id = inline(inline(schema(doc, 'Pet').variants![1]).properties!.get('id')!.schema);
+    expect(id.extraKeywords).toEqual({ readOnly: true });
+    expect(schema(doc, 'Dog').extraKeywords).toBeUndefined();
+  });
+
+  it('keeps server variables', () => {
+    expect(doc.servers[0].variables).toEqual({
+      region: { default: 'eu', enum: ['eu', 'us'], description: 'Deployment region' },
+    });
+    expect(doc.servers[1].variables).toBeUndefined();
+  });
+
   it('parses every operation with its method and path', () => {
     const ops = Array.from(doc.routes.values()).map((r) => `${r.method} ${r.path}`);
     expect(ops.sort()).toEqual(['delete /pets/{petId}', 'get /health', 'get /pets', 'get /pets/{petId}', 'post /pets'].sort());
@@ -243,6 +270,21 @@ describe('parseYaml: malformed and edge inputs', () => {
   it('rejects Swagger 2.0 with an error (the import dialog blocks on errors)', () => {
     const result = parseYaml('swagger: "2.0"\ninfo: {title: S, version: "1"}\npaths: {}');
     expect(result.errors.find((e) => e.code === 'INVALID_VERSION')?.severity).toBe('error');
+  });
+
+  it('imports OpenAPI 3.1 with a warning, mapping type arrays with "null" to nullable', () => {
+    const { doc, errors } = parseOk(`
+openapi: 3.1.0
+info: {title: T, version: '1'}
+paths: {}
+components:
+  schemas:
+    Name:
+      type: [string, 'null']
+      maxLength: 10
+`);
+    expect(errors.map((e) => [e.code, e.severity])).toEqual([['OPENAPI_31_IMPORTED_AS_30', 'warning']]);
+    expect(schema(doc, 'Name')).toMatchObject({ type: 'string', nullable: true, maxLength: 10 });
   });
 
   it('warns on an unresolved $ref but keeps the operation', () => {

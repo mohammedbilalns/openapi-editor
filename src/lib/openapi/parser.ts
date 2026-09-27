@@ -12,6 +12,8 @@ import {
   OAuthFlows,
   SecurityRequirement,
   SecurityScheme,
+  Server,
+  ServerVariable,
   InfoObject,
   NodeId,
   HttpMethod,
@@ -155,11 +157,19 @@ export function parseYaml(yamlContent: string): ParseResult {
   }
 
   // Validate OpenAPI version
-  if (!parsed.openapi || !String(parsed.openapi).startsWith('3.')) {
+  const version = parsed.openapi === undefined ? '' : String(parsed.openapi);
+  if (!version.startsWith('3.')) {
     errors.push({
       code: 'INVALID_VERSION',
       message: `Unsupported OpenAPI version: ${parsed.openapi}. Only OpenAPI 3.x is supported.`,
       severity: 'error',
+      location: { path: ['openapi'] },
+    });
+  } else if (!version.startsWith('3.0')) {
+    errors.push({
+      code: 'OPENAPI_31_IMPORTED_AS_30',
+      message: `OpenAPI ${version} is edited and exported as 3.0.3; keywords that only exist in ${version} are kept verbatim but may not be valid 3.0.`,
+      severity: 'warning',
       location: { path: ['openapi'] },
     });
   }
@@ -189,10 +199,21 @@ export function parseYaml(yamlContent: string): ParseResult {
   if (parsed.servers && Array.isArray(parsed.servers)) {
     doc.servers = parsed.servers
       .filter((s) => s && s.url)
-      .map((s) => ({
-        url: s.url!,
-        description: s.description,
-      }));
+      .map((s) => {
+        const server: Server = { url: s.url!, description: s.description };
+        const rawVariables = Object.entries(asObject((s as RawObject).variables));
+        if (rawVariables.length > 0) {
+          server.variables = {};
+          for (const [name, value] of rawVariables) {
+            const v = asObject(value);
+            const variable: ServerVariable = { default: v.default === undefined ? '' : String(v.default) };
+            if (Array.isArray(v.enum)) variable.enum = v.enum.map(String);
+            if (typeof v.description === 'string') variable.description = v.description;
+            server.variables[name] = variable;
+          }
+        }
+        return server;
+      });
   }
 
   // Parse tags
@@ -298,8 +319,24 @@ function parseInfo(info: OpenAPISchema['info'], errors: ValidationError[]): Info
   return result;
 }
 
+// Keywords mapped onto SchemaNode fields; everything else goes to extraKeywords.
+const MODELED_SCHEMA_KEYWORDS = new Set([
+  '$ref', 'type', 'description', 'properties', 'required', 'items', 'oneOf', 'anyOf', 'allOf',
+  'enum', 'format', 'example', 'default', 'minimum', 'maximum', 'minLength', 'maxLength',
+  'pattern', 'discriminator', 'nullable',
+]);
+
 function parseSchema(data: unknown, name: string | undefined, id: NodeId, ctx: ParseContext): SchemaNode {
   const schemaData = asObject(data);
+
+  // OpenAPI 3.1 allows `type: [string, 'null']`; map it to 3.0 `nullable`
+  let rawType = schemaData.type;
+  let nullable = schemaData.nullable === true;
+  if (Array.isArray(rawType)) {
+    const nonNull = rawType.filter((t) => t !== 'null');
+    if (nonNull.length < rawType.length) nullable = true;
+    rawType = nonNull[0];
+  }
 
   // Determine schema type
   let type: SchemaType = 'object';
@@ -312,15 +349,15 @@ function parseSchema(data: unknown, name: string | undefined, id: NodeId, ctx: P
     type = 'allOf';
   } else if (schemaData.enum) {
     type = 'enum';
-  } else if (schemaData.type === 'array') {
+  } else if (rawType === 'array') {
     type = 'array';
-  } else if (schemaData.type === 'string') {
+  } else if (rawType === 'string') {
     type = 'string';
-  } else if (schemaData.type === 'number') {
+  } else if (rawType === 'number') {
     type = 'number';
-  } else if (schemaData.type === 'integer') {
+  } else if (rawType === 'integer') {
     type = 'integer';
-  } else if (schemaData.type === 'boolean') {
+  } else if (rawType === 'boolean') {
     type = 'boolean';
   }
 
@@ -356,6 +393,9 @@ function parseSchema(data: unknown, name: string | undefined, id: NodeId, ctx: P
 
   if (type === 'enum' && schemaData.enum) {
     schema.enumValues = schemaData.enum as string[];
+    if (rawType === 'integer' || rawType === 'number' || rawType === 'boolean') {
+      schema.enumType = rawType;
+    }
   }
 
   if (type === 'oneOf' || type === 'anyOf' || type === 'allOf') {
@@ -363,13 +403,26 @@ function parseSchema(data: unknown, name: string | undefined, id: NodeId, ctx: P
     if (Array.isArray(variants)) {
       schema.variants = variants.map((v) => parseSchemaOrRef(v, ctx));
     }
-    if (type === 'oneOf' && schemaData.discriminator) {
+    if (schemaData.discriminator) {
       const disc = asObject(schemaData.discriminator);
       schema.discriminator = {
         propertyName: disc.propertyName as string,
       };
+      const mapping = asObject(disc.mapping);
+      if (Object.keys(mapping).length > 0) {
+        schema.discriminator.mapping = mapping as Record<string, string>;
+      }
     }
   }
+
+  if (nullable) schema.nullable = true;
+
+  let extra: RawObject | undefined;
+  for (const key in schemaData) {
+    if (MODELED_SCHEMA_KEYWORDS.has(key)) continue;
+    (extra ??= {})[key] = schemaData[key];
+  }
+  if (extra) schema.extraKeywords = extra;
 
   // Primitive constraints
   if (schemaData.format) schema.format = schemaData.format as string;
@@ -403,6 +456,10 @@ function parseSchemaOrRef(data: unknown, ctx: ParseContext): SchemaOrRef {
       severity: 'warning',
       location: {},
     });
+    // Keep the reference text (e.g. an external file ref) so export is lossless
+    const unresolved = parseSchema(schemaData, undefined, generateId(), ctx);
+    unresolved.extraKeywords = { $ref: refPath, ...unresolved.extraKeywords };
+    return { kind: 'inline', schema: unresolved };
   }
 
   // Inline schema
