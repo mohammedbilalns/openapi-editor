@@ -3,9 +3,9 @@
  *
  * Used by the benchmark (bench/core.bench.ts) and the performance guard test.
  * Fixtures are generated at run time and never committed: the "large" preset
- * produces a ~10 MB YAML document (Stripe/GitHub-sized).
+ * produces a ~14 MB YAML document (Stripe/GitHub-sized).
  */
-import * as YAML from 'yaml';
+import { dump } from 'js-yaml';
 
 export interface SpecSize {
   /** number of distinct paths (each gets 1-4 operations) */
@@ -276,7 +276,7 @@ export function generateSpec(size: SpecSize): Record<string, unknown> {
 }
 
 export function generateSpecYaml(size: SpecSize): string {
-  return YAML.stringify(generateSpec(size), { lineWidth: 0, aliasDuplicateObjects: false });
+  return dump(generateSpec(size), { lineWidth: -1, noRefs: true });
 }
 
 export function generateSpecJson(size: SpecSize): string {
