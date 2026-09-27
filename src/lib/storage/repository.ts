@@ -242,6 +242,9 @@ export class IndexedDBRepository implements IProjectRepository {
       },
     };
     tx.objectStore(PROJECTS_STORE).put(record);
+    // Commit now instead of when the task ends: a save flushed from pagehide must
+    // commit before the page unloads, or the browser aborts it (edit, reload, lost).
+    tx.commit?.();
 
     try {
       await done;
