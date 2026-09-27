@@ -164,7 +164,7 @@ function validateEnumSchema(
 
   // Check for duplicate enum values
   if (schema.enumValues) {
-    const seen = new Set<string>();
+    const seen = new Set<string | number | boolean>();
     for (const value of schema.enumValues) {
       if (seen.has(value)) {
         errors.push({

@@ -414,7 +414,7 @@ function parseSchema(data: unknown, name: string | undefined, id: NodeId, ctx: P
   }
 
   if (type === 'enum' && schemaData.enum) {
-    schema.enumValues = schemaData.enum as string[];
+    schema.enumValues = schemaData.enum as Array<string | number | boolean>;
     if (rawType === 'integer' || rawType === 'number' || rawType === 'boolean') {
       schema.enumType = rawType;
     }

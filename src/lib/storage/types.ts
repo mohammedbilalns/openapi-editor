@@ -72,7 +72,7 @@ export interface SerializedSchema {
   properties?: [string, unknown][];
   items?: unknown;
   variants?: unknown[];
-  enumValues?: string[];
+  enumValues?: Array<string | number | boolean>;
   required?: string[];
   format?: string;
   example?: unknown;

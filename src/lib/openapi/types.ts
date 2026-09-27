@@ -34,7 +34,8 @@ export interface SchemaNode {
   properties?: Map<string, PropertyDef>;
   items?: SchemaOrRef;
   variants?: SchemaOrRef[];
-  enumValues?: string[];
+  /** The enum's JSON values: strings, or numbers/booleans for non-string enums (see `enumType`). */
+  enumValues?: Array<string | number | boolean>;
   required?: string[];
   format?: string;
   example?: unknown;
@@ -205,6 +206,7 @@ export type CommandType =
   | 'UPDATE_RESPONSE'
   | 'DELETE_RESPONSE'
   | 'SET_REQUEST_BODY'
+  | 'UPDATE_REQUEST_BODY'
   | 'UPDATE_INFO'
   | 'ADD_SERVER'
   | 'UPDATE_SERVER'
@@ -213,8 +215,10 @@ export type CommandType =
   | 'UPDATE_SECURITY_SCHEME'
   | 'DELETE_SECURITY_SCHEME'
   | 'ADD_TAG'
+  | 'UPDATE_TAG'
   | 'DELETE_TAG'
-  | 'IMPORT_DOCUMENT';
+  | 'IMPORT_DOCUMENT'
+  | 'RESET_DOCUMENT';
 
 export interface Command {
   type: CommandType;
