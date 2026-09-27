@@ -1,7 +1,7 @@
 import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { DefaultErrorComponent } from '@/components/default-error'
-import { NotFound } from '@/components/not-found'
+import { NotFound } from '@/components/app/not-found'
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration'
 import { ConfirmHost, Toaster } from '@/components/shared'
 import { ThemeProvider } from '@/components/theme-provider'

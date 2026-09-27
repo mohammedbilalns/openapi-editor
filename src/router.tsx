@@ -1,6 +1,7 @@
 import { createRouter } from '@tanstack/react-router'
 import { DefaultErrorComponent } from '@/components/default-error'
-import { NotFound } from '@/components/not-found'
+import { NotFound } from '@/components/app/not-found'
+import { ShellSkeleton } from '@/components/app/shell-skeleton'
 import { routeTree } from './routeTree.gen'
 
 export function getRouter() {
@@ -10,14 +11,9 @@ export function getRouter() {
     defaultPreloadStaleTime: 0,
     defaultErrorComponent: DefaultErrorComponent,
     defaultNotFoundComponent: NotFound,
-    defaultPendingComponent: PendingShell,
+    defaultPendingComponent: ShellSkeleton,
     scrollRestoration: true,
   })
-}
-
-/** Rendered into the prerendered SPA shell in place of the matched route. */
-function PendingShell() {
-  return <div className="min-h-svh bg-background" aria-busy="true" />
 }
 
 declare module '@tanstack/react-router' {

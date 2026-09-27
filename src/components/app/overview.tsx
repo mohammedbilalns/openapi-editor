@@ -1,17 +1,166 @@
-// Step 0 placeholder; the real overview lands with the shell.
-import { PageHeader } from '@/components/shared'
-import { useInfo, useRouteCount, useSchemaCount } from '@/lib/openapi/selectors'
+import * as React from 'react'
+import { Link } from '@tanstack/react-router'
+import { Boxes, CircleAlert, CircleX, FileText, Import, Info, Plus, Route as RouteIcon, Tag, TriangleAlert } from 'lucide-react'
+import { EmptyState, PageHeader, Panel, StatusChip } from '@/components/shared'
+import { Button } from '@/components/ui/button'
+import { useInfo, useRouteCount, useSchemaCount, useTags } from '@/lib/openapi/selectors'
+import { cn } from '@/lib/utils'
+import { showInspector } from './inspector-controls'
+import { entityLabel, problemLink, useValidationIssues, type Issue } from '@/lib/openapi/analysis'
+import { shell } from './shell-state'
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/** `/` — what's in the document and what needs attention (BLUEPRINT §3). */
 export function Overview() {
   const info = useInfo()
   const routes = useRouteCount()
   const schemas = useSchemaCount()
+  const tags = useTags()
+  const validation = useValidationIssues()
+  const problems = validation.counts
+
+  if (routes === 0 && schemas === 0) {
+    return (
+      <div className="mx-auto w-full max-w-[56rem] px-4 py-4 md:px-6 md:py-6">
+        <EmptyState
+          icon={FileText}
+          title="Nothing here yet. Start with a route or import a spec."
+          description="Everything stays in this browser. There are no accounts and nothing is uploaded."
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={shell.newRoute}>
+                <Plus />
+                New route
+              </Button>
+              <Button variant="outline" size="sm" onClick={shell.newSchema}>
+                <Plus />
+                New schema
+              </Button>
+              <Button variant="outline" size="sm" onClick={shell.importSpec}>
+                <Import />
+                Import a spec
+              </Button>
+            </>
+          }
+        />
+      </div>
+    )
+  }
+
+  const title = info.title || 'Untitled API'
+  const problemCount = problems.errors + problems.warnings
+
   return (
-    <div className="mx-auto w-full max-w-[56rem] px-4 py-4 md:px-6 md:py-6">
+    <div className="@container mx-auto flex w-full max-w-[56rem] flex-col gap-6 px-4 py-4 md:px-6 md:py-6">
       <PageHeader
-        title={`${info.title}. ${routes} ${routes === 1 ? 'route' : 'routes'}, ${schemas} ${schemas === 1 ? 'schema' : 'schemas'}.`}
+        title={`${title.replace(/[.!?]$/, '')}. ${plural(routes, 'route', 'routes')}, ${plural(schemas, 'schema', 'schemas')}.`}
         description={info.description || undefined}
       />
+      <div className="grid grid-cols-2 gap-4 @[40rem]:grid-cols-4">
+        <StatTile label="Routes" icon={RouteIcon} value={routes} />
+        <StatTile label="Schemas" icon={Boxes} value={schemas} />
+        <StatTile label="Tags" icon={Tag} value={tags.length} />
+        <StatTile
+          label="Problems"
+          icon={CircleAlert}
+          value={problemCount}
+          footer={
+            problemCount > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {problems.errors > 0 && (
+                  <StatusChip tone="destructive">{plural(problems.errors, 'error', 'errors')}</StatusChip>
+                )}
+                {problems.warnings > 0 && (
+                  <StatusChip tone="warning">{plural(problems.warnings, 'warning', 'warnings')}</StatusChip>
+                )}
+              </div>
+            ) : undefined
+          }
+        />
+      </div>
+      <ProblemsPanel issues={validation.issues} />
     </div>
+  )
+}
+
+function StatTile({
+  label,
+  icon: Icon,
+  value,
+  footer,
+}: {
+  label: string
+  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
+  value: number
+  footer?: React.ReactNode
+}) {
+  return (
+    <section
+      aria-label={label}
+      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground shadow-xs/5"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs text-muted-foreground">{label}</h2>
+        <Icon aria-hidden className="size-3.5 text-muted-foreground" />
+      </div>
+      <p className="text-[28px] leading-[1.1] font-medium tracking-[-0.02em] tabular-nums">{value}</p>
+      {footer}
+    </section>
+  )
+}
+
+const severityIcon = { error: CircleX, warning: TriangleAlert, info: Info } as const
+const severityClass = {
+  error: 'text-destructive-foreground',
+  warning: 'text-warning-foreground',
+  info: 'text-muted-foreground',
+} as const
+
+function ProblemsPanel({ issues }: { issues: readonly Issue[] }) {
+  const deferred = React.useDeferredValue(issues)
+  const top = deferred.slice(0, 5)
+  return (
+    <Panel
+      title="Problems"
+      icon={CircleAlert}
+      count={deferred.length}
+      flush
+      actions={
+        deferred.length > 0 ? (
+          <Button variant="ghost" size="xs" onClick={() => showInspector('problems')}>
+            View all
+          </Button>
+        ) : undefined
+      }
+    >
+      {top.length === 0 ? (
+        <p className="px-4 py-3 text-[13px] text-muted-foreground">No problems. The spec validates cleanly.</p>
+      ) : (
+        <ul className="divide-y divide-border/70">
+          {top.map((issue) => {
+            const Icon = severityIcon[issue.severity]
+            const location = [issue.entity.kind === 'document' ? '' : entityLabel(issue.entity), issue.location]
+              .filter(Boolean)
+              .join(' · ')
+            return (
+              <li key={issue.key}>
+                <Link
+                  {...problemLink(issue)}
+                  className="flex min-h-10 items-start gap-2.5 px-4 py-2.5 text-[13px] outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                >
+                  <Icon aria-hidden className={cn('mt-0.5 size-3.5 shrink-0', severityClass[issue.severity])} />
+                  <span className="sr-only">{issue.severity === 'error' ? 'Error' : issue.severity === 'warning' ? 'Warning' : 'Note'}:</span>
+                  <span className="min-w-0 flex-1">{issue.message}</span>
+                  <span className="max-w-[40%] shrink-0 truncate font-mono text-[12px] text-muted-foreground">
+                    {location}
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </Panel>
   )
 }

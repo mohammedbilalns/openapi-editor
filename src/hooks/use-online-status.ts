@@ -1,30 +1,19 @@
-import { useState, useEffect } from 'react';
+import * as React from 'react'
 
-/**
- * Custom hook to detect online/offline status
- * Returns true when online, false when offline
- */
-export function useOnlineStatus() {
-  const [isOnline, setIsOnline] = useState(true);
+function subscribe(onChange: () => void) {
+  window.addEventListener('online', onChange)
+  window.addEventListener('offline', onChange)
+  return () => {
+    window.removeEventListener('online', onChange)
+    window.removeEventListener('offline', onChange)
+  }
+}
 
-  useEffect(() => {
-    // Check initial status
-    setIsOnline(navigator.onLine);
-
-    // Event handlers
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    // Add event listeners
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Cleanup
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  return isOnline;
+/** True while the browser reports a connection. Assumes online before hydration. */
+export function useOnlineStatus(): boolean {
+  return React.useSyncExternalStore(
+    subscribe,
+    () => navigator.onLine,
+    () => true,
+  )
 }
