@@ -276,6 +276,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     const field = schema.properties.get(fieldName);
     if (!field) return;
+    // Renaming onto another existing field would silently drop that field
+    if (updates.name && updates.name !== fieldName && schema.properties.has(updates.name)) return;
 
     const newDoc = cloneDocument(state.document);
     const updatedSchema = newDoc.schemas.get(schemaId)!;
@@ -283,8 +285,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     
     // Handle field rename
     if (updates.name && updates.name !== fieldName) {
-      updatedSchema.properties!.delete(fieldName);
-      updatedSchema.properties!.set(updates.name, updatedField);
+      // Rebuild the Map so the renamed field keeps its position
+      const newName = updates.name;
+      updatedSchema.properties = new Map(
+        Array.from(updatedSchema.properties!, ([k, v]): [string, PropertyDef] =>
+          k === fieldName ? [newName, updatedField] : [k, v]
+        )
+      );
       
       // Update required array
       if (updatedSchema.required) {

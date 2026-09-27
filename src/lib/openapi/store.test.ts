@@ -122,6 +122,21 @@ describe('editor store: document actions', () => {
     expect(p.required).toEqual(['microchip']);
   });
 
+  it('renaming a field keeps its position in the property order', () => {
+    store().updateField(pet.id, 'name', { name: 'title' });
+    expect(Array.from(doc().schemas.get(pet.id)!.properties!.keys())).toEqual(['title', 'age', 'owner']);
+    expect(doc().schemas.get(pet.id)!.required).toEqual(['title']);
+  });
+
+  it('refuses to rename a field onto another existing field (no silent data loss)', () => {
+    const before = doc();
+    store().updateField(pet.id, 'age', { name: 'owner' });
+    expect(doc()).toBe(before);
+    const props = doc().schemas.get(pet.id)!.properties!;
+    expect(props.get('owner')!.schema).toEqual(ref(owner));
+    expect(props.has('age')).toBe(true);
+  });
+
   it('addFieldToSchema ignores non-object schemas', () => {
     const e = createSchema('enum', 'E');
     store().addSchema(e);
