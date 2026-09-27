@@ -97,7 +97,7 @@ function TagRow({ tag, count, names }: { tag: Tag; count: number; names: Set<str
           onChange={(event) =>
             actions.updateTag(tag.name, { description: event.target.value === '' ? undefined : event.target.value })
           }
-          className="h-7 text-[13px]"
+          className="h-7 text-[13px] @[40rem]:placeholder:text-transparent @[40rem]:focus:placeholder:text-muted-foreground"
         />
       </td>
       <td className={cn(cellClassName, 'w-20 text-right font-mono text-[12.5px] text-muted-foreground tabular-nums')}>
@@ -195,7 +195,7 @@ export function TagsSection() {
           description="Tags group routes in the sidebar and in generated docs."
         />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full border-collapse text-[13px]">
             <thead className="@max-[40rem]:sr-only">
               <tr>

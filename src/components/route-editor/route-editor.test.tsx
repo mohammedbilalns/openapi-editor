@@ -156,6 +156,9 @@ describe('RouteEditor: responses', () => {
     const labels = within(list)
       .getAllByRole('option')
       .map((option) => option.textContent)
+    // Most used first: 2xx, then 4xx, 5xx, 3xx and 1xx last.
+    const firstDigits = [...new Set(labels.map((label) => label?.[0]))]
+    expect(firstDigits).toEqual(['2', '4', '5', '3', '1'])
     expect(labels).not.toContain('200OK')
     expect(labels).not.toContain('404Not Found')
     expect(labels).toContain('201Created')
@@ -163,6 +166,16 @@ describe('RouteEditor: responses', () => {
     await user.click(within(list).getByRole('option', { name: /201\s*Created/ }))
     expect(getRoute(seeded.getPetId)!.responses.get('201')).toMatchObject({ description: 'Created' })
     expect(screen.getByRole('row', { name: '201' })).toBeInTheDocument()
+  })
+
+  it('adds a typed code that is not in the list', async () => {
+    const user = userEvent.setup()
+    await renderRouteEditor(seeded.getPetId)
+
+    await user.click(screen.getByRole('button', { name: 'Add response' }))
+    await user.type(await screen.findByPlaceholderText('Search status codes'), '4xx')
+    await user.click(await screen.findByRole('option', { name: /4XX\s*Add this code/ }))
+    expect(getRoute(seeded.getPetId)!.responses.has('4XX')).toBe(true)
   })
 })
 

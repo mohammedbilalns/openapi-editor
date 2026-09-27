@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Toaster } from '@/components/shared'
 import { useEditorStore } from '@/lib/openapi/store'
 import { createEmptyDocument } from '@/lib/openapi/types'
-import { ImportDialog } from './import-dialog'
+import { ImportDialog, splitCodeFrame } from './import-dialog'
 import { renderWithRouter } from './test-router'
 
 const PETSTORE = `openapi: 3.0.3
@@ -87,6 +87,10 @@ describe('ImportDialog', () => {
 
     const list = await screen.findByRole('list', { name: 'Import problems' })
     expect(list).toHaveTextContent(/Failed to parse YAML/)
+    // The code frame keeps its line breaks in a code block under the one-line message.
+    const frame = list.querySelector('pre')
+    expect(frame?.textContent).toMatch(/\n/)
+    expect(list.querySelector('p')?.textContent).not.toContain('|')
     expect(screen.getByText(/1 error stops the import/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled()
     expect(useEditorStore.getState().document).toBe(before)
@@ -141,5 +145,19 @@ describe('ImportDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Import' }))
     await waitFor(() => expect(useEditorStore.getState().document.info.title).toBe('Petstore'))
+  })
+})
+
+describe('splitCodeFrame', () => {
+  it('keeps the first line as the message and the rest as an aligned frame', () => {
+    expect(splitCodeFrame('Bad thing (2:1)\n\n 1 | a: 1\n 2 | b: [\n-----^\n')).toEqual({
+      text: 'Bad thing (2:1)',
+      frame: ' 1 | a: 1\n 2 | b: [\n-----^',
+    })
+  })
+
+  it('leaves one-line messages alone', () => {
+    expect(splitCodeFrame('Missing required "info" object')).toEqual({ text: 'Missing required "info" object' })
+    expect(splitCodeFrame('Trailing newline\n\n')).toEqual({ text: 'Trailing newline' })
   })
 })

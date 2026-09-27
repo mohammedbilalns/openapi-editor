@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Variable } from 'lucide-react'
 import { EmptyState, IssueText, MetaChip, Panel } from '@/components/shared'
 import { SchemaTypePicker } from '@/components/schema-editor'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,8 @@ import {
   RowLock,
   StackedLabel,
   cellInputClassName,
-  rowClassName,
+  headerPlaceholderClass,
+  rowClass,
   useFocusWhen,
 } from './row-parts'
 
@@ -35,8 +36,8 @@ const ADDABLE: { value: NewLocation; label: string }[] = [
 const PARAM_TYPES: readonly SchemaType[] = ['string', 'integer', 'number', 'boolean', 'array', 'enum']
 
 const columns = cn(
-  '[grid-template-areas:"name_name_name_act"_"in_type_type_req"_"desc_desc_desc_desc"] grid-cols-[4.5rem_minmax(0,1fr)_auto_auto]',
-  '@[40rem]:[grid-template-areas:"name_in_type_req_desc_act"] @[40rem]:grid-cols-[minmax(0,1.1fr)_4.5rem_minmax(0,1fr)_4.25rem_minmax(0,1.5fr)_1.5rem]',
+  '[grid-template-areas:"name_name_req_act"_"in_type_type_type"_"desc_desc_desc_desc"] grid-cols-[4.5rem_minmax(0,1fr)_auto_auto]',
+  '@[48rem]:[grid-template-areas:"name_in_type_req_desc_act"] @[48rem]:grid-cols-[minmax(0,1.1fr)_4.5rem_minmax(10rem,1fr)_4.25rem_minmax(0,1.5fr)_1.5rem]',
 )
 
 const EMPTY_PARAMS: ParameterDef[] = []
@@ -72,6 +73,7 @@ export function ParametersPanel({ routeId }: { routeId: NodeId }) {
     <Panel
       id="parameters"
       title="Parameters"
+      icon={Variable}
       count={params.length}
       flush
       actions={
@@ -98,7 +100,7 @@ export function ParametersPanel({ routeId }: { routeId: NodeId }) {
         />
       ) : (
         <div role="table" aria-label="Parameters" className="text-[13px]">
-          <RowHeader className={columns}>
+          <RowHeader className={columns} breakpoint="lg">
             <ColumnHeader className="[grid-area:name]">Name</ColumnHeader>
             <ColumnHeader className="[grid-area:in]">In</ColumnHeader>
             <ColumnHeader className="[grid-area:type]">Type</ColumnHeader>
@@ -154,7 +156,7 @@ const ParameterRow = React.memo(function ParameterRow({
   const { sealHistory } = useActions()
 
   return (
-    <div id={`param-${param.id}`} role="row" aria-label={label} className={cn(rowClassName, columns)}>
+    <div id={`param-${param.id}`} role="row" aria-label={label} className={cn(rowClass('lg'), columns)}>
       <div role="cell" className="min-w-0 [grid-area:name]">
         <Input
           aria-label="Name"
@@ -185,7 +187,7 @@ const ParameterRow = React.memo(function ParameterRow({
           aria-label="Type"
         />
       </div>
-      <div role="cell" className="flex items-center gap-1.5 [grid-area:req] @[40rem]:justify-center">
+      <div role="cell" className="flex items-center gap-1.5 [grid-area:req] @[48rem]:justify-center">
         <Checkbox
           aria-label="Required"
           checked={isPath || param.required}
@@ -193,7 +195,7 @@ const ParameterRow = React.memo(function ParameterRow({
           title={isPath ? 'Path parameters are always required.' : undefined}
           onCheckedChange={(checked) => onUpdate(param.id, { required: checked })}
         />
-        <StackedLabel>Required</StackedLabel>
+        <StackedLabel breakpoint="lg">Required</StackedLabel>
       </div>
       <div role="cell" className="min-w-0 [grid-area:desc]">
         <Input
@@ -202,7 +204,7 @@ const ParameterRow = React.memo(function ParameterRow({
           placeholder="Description"
           onChange={(event) => onUpdate(param.id, { description: event.target.value || undefined })}
           onBlur={sealHistory}
-          className={cellInputClassName}
+          className={cn(cellInputClassName, headerPlaceholderClass('lg'))}
         />
       </div>
       <div role="cell" className="flex justify-end [grid-area:act]">

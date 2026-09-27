@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Package } from 'lucide-react'
 import { EmptyState, FieldRow, IssueText, Panel, PanelAddRow } from '@/components/shared'
 import { SchemaCombobox } from '@/components/schema-editor'
 import { Button } from '@/components/ui/button'
@@ -70,7 +71,7 @@ export function RequestBodyPanel({ routeId }: { routeId: NodeId }) {
 
   if (!hasBody) {
     return (
-      <Panel id="request-body" title="Request body" footer={<PanelAddRow label="Add request body" onClick={add} />}>
+      <Panel id="request-body" title="Request body" icon={Package} footer={<PanelAddRow label="Add request body" onClick={add} />}>
         <EmptyState size="panel" title="No request body." description="The request carries no payload." className="py-4" />
       </Panel>
     )
@@ -141,6 +142,7 @@ function RequestBodyEditor({ routeId, unusual, method }: { routeId: NodeId; unus
     <Panel
       id="request-body"
       title="Request body"
+      icon={Package}
       flush
       actions={
         <Button variant="ghost" size="xs" onClick={() => setRequestBody(routeId, undefined)}>

@@ -113,9 +113,12 @@ const SchemeRow = React.memo(function SchemeRow({ scheme }: { scheme: SecuritySc
           value={scheme.name}
           onChange={(event) => updateSecurityScheme(scheme.id, { name: event.target.value })}
           aria-invalid={!scheme.name.trim() || undefined}
-          className="h-7 max-w-64 font-mono text-[12.5px]"
+          className="h-7 min-w-0 flex-1 font-mono text-[12.5px] @[40rem]:max-w-64"
         />
-        <MetaChip>{TYPE_LABELS[scheme.type]}</MetaChip>
+        {/* A fixed slot wide enough for the longest type ("OpenID Connect"), so every name input has the same width. */}
+        <div className="flex w-28 shrink-0">
+          <MetaChip>{TYPE_LABELS[scheme.type]}</MetaChip>
+        </div>
         <RowDeleteButton
           label={`Delete ${scheme.name || 'security scheme'}`}
           onClick={() => deleteSecurityScheme(scheme.id)}

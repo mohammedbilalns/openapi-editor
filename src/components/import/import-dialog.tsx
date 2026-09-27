@@ -60,6 +60,22 @@ const SEVERITY_ICON: Record<ValidationSeverity, { icon: typeof CircleX; classNam
   info: { icon: Info, className: 'text-muted-foreground', label: 'Note' },
 }
 
+/**
+ * YAML parse errors arrive as one line of explanation followed by a code frame
+ * (`1 | openapi: 3.0.3` … `-----^`). The first line is the message; the rest,
+ * if any, keeps its line breaks and alignment in a code block (§9.19).
+ */
+export function splitCodeFrame(message: string): { text: string; frame?: string } {
+  const newline = message.indexOf('\n')
+  if (newline === -1) return { text: message }
+  const text = message.slice(0, newline).trim()
+  const frame = message
+    .slice(newline + 1)
+    .replace(/^(?:[ \t]*\r?\n)+/, '')
+    .trimEnd()
+  return frame ? { text, frame } : { text }
+}
+
 function ProblemList({ problems }: { problems: ValidationError[] }) {
   const errors = problems.filter((p) => p.severity === 'error').length
   const warnings = problems.length - errors
@@ -74,22 +90,28 @@ function ProblemList({ problems }: { problems: ValidationError[] }) {
       </p>
       <ul
         aria-label="Import problems"
-        className="max-h-48 divide-y divide-border/70 overflow-y-auto rounded-lg border border-border"
+        className="max-h-64 divide-y divide-border/70 overflow-y-auto rounded-lg border border-border"
       >
         {problems.map((problem, index) => {
           const severity = SEVERITY_ICON[problem.severity]
           const Icon = severity.icon
           const path = problem.location.path?.join('.')
+          const message = splitCodeFrame(problem.message)
           return (
             // Parser problems have no stable identity; their order is fixed per parse.
             // oxlint-disable-next-line react/no-array-index-key
             <li key={index} className="flex items-start gap-2 px-3 py-2">
               <Icon aria-hidden className={cn('mt-0.5 size-3.5 shrink-0', severity.className)} />
-              <div className="flex min-w-0 flex-col gap-0.5">
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <p className="text-[13px] leading-5 break-words text-foreground">
                   <span className="sr-only">{severity.label}: </span>
-                  {problem.message}
+                  {message.text}
                 </p>
+                {message.frame && (
+                  <pre className="mt-1 overflow-x-auto rounded-lg border border-border bg-code p-3 font-mono text-[12.5px] leading-5 whitespace-pre text-code-foreground [tab-size:2]">
+                    {message.frame}
+                  </pre>
+                )}
                 {path && <p className="font-mono text-[11px] leading-4 text-subtle-foreground">{path}</p>}
               </div>
             </li>

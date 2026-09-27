@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Reply } from 'lucide-react'
 import { EmptyState, IssueText, Panel } from '@/components/shared'
 import { SchemaCombobox } from '@/components/schema-editor'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import {
   RowHeader,
   StackedLabel,
   cellInputClassName,
+  headerPlaceholderClass,
   rowClassName,
   useFocusWhen,
 } from './row-parts'
@@ -24,8 +25,8 @@ import { fieldIssues, issueField, useIssuesFor, type RouteIssue } from './route-
 import { fromPick, toPick } from './schema-pick'
 
 const columns = cn(
-  '[grid-template-areas:"code_desc_act"_"body_body_body"] grid-cols-[3.25rem_minmax(0,1fr)_1.5rem]',
-  '@[40rem]:[grid-template-areas:"code_desc_body_act"] @[40rem]:grid-cols-[3.25rem_minmax(0,1.4fr)_minmax(0,1fr)_1.5rem]',
+  '[grid-template-areas:"code_desc_act"_"body_body_body"] grid-cols-[4rem_minmax(0,1fr)_1.5rem]',
+  '@[40rem]:[grid-template-areas:"code_desc_body_act"] @[40rem]:grid-cols-[4rem_minmax(0,1.4fr)_minmax(10rem,1fr)_1.5rem]',
 )
 
 /** Numeric codes in order, then ranges (`4XX`), then `default`. */
@@ -41,7 +42,15 @@ export function sortStatusCodes(codes: Iterable<string>): string[] {
 
 const CUSTOM_CODE = /^([1-5]\d\d|[1-5]XX|default)$/
 
-const CATEGORIES = [...new Set(HTTP_STATUS_CODES.map((status) => status.category))]
+/** Picker groups, most used first: success, client and server errors, then redirects and informational. */
+export const STATUS_CATEGORY_ORDER: readonly HttpStatusCode['category'][] = [
+  'success',
+  'client-error',
+  'server-error',
+  'redirection',
+  'informational',
+]
+const CATEGORIES = STATUS_CATEGORY_ORDER
 const CODES_BY_CATEGORY = new Map<HttpStatusCode['category'], HttpStatusCode[]>(
   CATEGORIES.map((category) => [category, HTTP_STATUS_CODES.filter((status) => status.category === category)]),
 )
@@ -77,6 +86,7 @@ export function ResponsesPanel({ routeId }: { routeId: NodeId }) {
     <Panel
       id="responses"
       title="Responses"
+      icon={Reply}
       count={codes.length}
       flush
       actions={<AddResponseButton existing={responses} onAdd={add} />}
@@ -228,7 +238,7 @@ const ResponseRow = React.memo(function ResponseRow({
           ref={descriptionRef}
           onChange={(event) => onUpdate(code, { description: event.target.value })}
           onBlur={sealHistory}
-          className={cellInputClassName}
+          className={cn(cellInputClassName, headerPlaceholderClass())}
         />
       </div>
       <div role="cell" className="flex min-w-0 flex-col gap-1 [grid-area:body]">

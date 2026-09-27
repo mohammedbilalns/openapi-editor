@@ -14,7 +14,7 @@ import { SchemaTypePicker } from './schema-type-picker'
 import { useDraft } from './use-draft'
 
 /** Name · Type · Required · Description · delete. */
-const COLUMNS = '@[40rem]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4.5rem_minmax(0,1.4fr)_1.75rem]'
+const COLUMNS = '@[40rem]:grid-cols-[minmax(0,1fr)_minmax(10rem,1fr)_4.5rem_minmax(0,1.4fr)_1.75rem]'
 
 const getSchema = (id: NodeId) => useEditorStore.getState().document.schemas.get(id)
 
@@ -191,7 +191,7 @@ const FieldRow = React.memo(function FieldRow({
         />
         <label
           htmlFor={`${baseId}-required`}
-          className="flex h-7 shrink-0 cursor-pointer items-center gap-2 text-xs text-muted-foreground @[40rem]:col-start-3 @[40rem]:row-start-1 @[40rem]:justify-center">
+          className="relative flex h-7 shrink-0 cursor-pointer items-center gap-2 text-xs text-muted-foreground @[40rem]:col-start-3 @[40rem]:row-start-1 @[40rem]:justify-center">
           <Checkbox id={`${baseId}-required`} checked={field.required} onCheckedChange={(checked) => onChange(name, { required: checked })} />
           <span className="@[40rem]:sr-only">Required</span>
         </label>
@@ -200,7 +200,11 @@ const FieldRow = React.memo(function FieldRow({
         {...descriptionDraft.inputProps}
         aria-label={`Description of ${name}`}
         placeholder="Description"
-        className={cn(cellInputClassName, 'col-span-2 @[40rem]:col-span-1 @[40rem]:col-start-4 @[40rem]:row-start-1')}
+        className={cn(
+          cellInputClassName,
+          '@[40rem]:placeholder:text-transparent @[40rem]:focus:placeholder:text-muted-foreground',
+          'col-span-2 @[40rem]:col-span-1 @[40rem]:col-start-4 @[40rem]:row-start-1',
+        )}
       />
       {invalid && (
         <div className="col-span-2 @[40rem]:col-span-5">

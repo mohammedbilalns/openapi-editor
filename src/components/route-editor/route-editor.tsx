@@ -92,7 +92,7 @@ function plural(count: number, word: string) {
 function IssueChips({ issues }: { issues: readonly RouteIssue[] }) {
   const { errors, warnings } = countIssues(issues)
   if (errors === 0 && warnings === 0) return null
-  const chipButton = 'cursor-pointer rounded outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  const chipButton = 'relative cursor-pointer rounded outline-none focus-visible:ring-2 focus-visible:ring-ring'
   return (
     <>
       {errors > 0 && (

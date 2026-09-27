@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Combine } from 'lucide-react'
+import { Combine, Split } from 'lucide-react'
 import { EmptyState, FieldRow, IssueText, Panel, PanelAddRow } from '@/components/shared'
 import { Input } from '@/components/ui/input'
 import { useActions } from '@/lib/openapi/selectors'
@@ -135,7 +135,7 @@ function DiscriminatorPanel({ schema, issues }: { schema: SchemaNode; issues: re
   const id = React.useId()
   const discriminator = schema.discriminator
   return (
-    <Panel title="Discriminator">
+    <Panel title="Discriminator" icon={Split}>
       <FieldRow
         label="Property"
         htmlFor={id}

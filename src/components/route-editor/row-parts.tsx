@@ -6,20 +6,47 @@ import { cn } from '@/lib/utils'
 
 /**
  * Editable rows inside a panel (DESIGN §9.17, dense). Each table defines its
- * columns with grid-template-areas: stacked below the panel's `@[40rem]`
- * container width, one line above it.
+ * columns with grid-template-areas: stacked below the panel's container
+ * breakpoint, one line above it. `md` is `@[40rem]`; `lg` (`@[48rem]`) is for
+ * tables with more columns than fit at 40rem (Parameters).
  */
-export const rowClassName = cn(
+export type RowBreakpoint = 'md' | 'lg'
+
+const rowBase = cn(
   'group/row grid scroll-mt-20 items-center gap-x-2 gap-y-1.5 border-b border-border/70 px-4 py-2 last:border-b-0',
   'transition-colors duration-150 ease-standard hover:bg-muted/40 focus-within:bg-muted/40',
-  '@[40rem]:min-h-10 @[40rem]:py-1.5',
   'target:bg-accent',
 )
 
-/** Column headers; hidden while rows are stacked. */
-export function RowHeader({ className, children }: { className: string; children: React.ReactNode }) {
+export function rowClass(breakpoint: RowBreakpoint = 'md'): string {
+  return cn(rowBase, breakpoint === 'lg' ? '@[48rem]:min-h-10 @[48rem]:py-1.5' : '@[40rem]:min-h-10 @[40rem]:py-1.5')
+}
+
+export const rowClassName = rowClass('md')
+
+/**
+ * Column headers; hidden while rows are stacked. `relative` keeps the sr-only
+ * "Actions" label inside the row; unpositioned, it lands against the page and
+ * stretches the document.
+ */
+export function RowHeader({
+  className,
+  breakpoint = 'md',
+  children,
+}: {
+  className: string
+  breakpoint?: RowBreakpoint
+  children: React.ReactNode
+}) {
   return (
-    <div role="row" className={cn('hidden h-9 items-center gap-x-2 border-b border-border px-4 @[40rem]:grid', className)}>
+    <div
+      role="row"
+      className={cn(
+        'relative hidden h-9 items-center gap-x-2 border-b border-border px-4',
+        breakpoint === 'lg' ? '@[48rem]:grid' : '@[40rem]:grid',
+        className,
+      )}
+    >
       {children}
     </div>
   )
@@ -34,12 +61,26 @@ export function ColumnHeader({ className, children }: { className?: string; chil
 }
 
 /** Visible label for a cell while rows are stacked; screen readers get the control's own label. */
-export function StackedLabel({ children }: { children: React.ReactNode }) {
+export function StackedLabel({ breakpoint = 'md', children }: { breakpoint?: RowBreakpoint; children: React.ReactNode }) {
   return (
-    <span aria-hidden className="text-xs text-muted-foreground @[40rem]:hidden">
+    <span
+      aria-hidden
+      className={cn('text-xs text-muted-foreground', breakpoint === 'lg' ? '@[48rem]:hidden' : '@[40rem]:hidden')}
+    >
       {children}
     </span>
   )
+}
+
+/**
+ * For a placeholder that names the cell ("Description"): it labels the stacked
+ * layout, but in table layout the column header already does, so it only
+ * shows while the input has focus.
+ */
+export function headerPlaceholderClass(breakpoint: RowBreakpoint = 'md'): string {
+  return breakpoint === 'lg'
+    ? '@[48rem]:placeholder:text-transparent @[48rem]:focus:placeholder:text-muted-foreground'
+    : '@[40rem]:placeholder:text-transparent @[40rem]:focus:placeholder:text-muted-foreground'
 }
 
 /** Hover/focus-revealed on fine pointers, always shown on touch (BLUEPRINT §2.2, §12). */
