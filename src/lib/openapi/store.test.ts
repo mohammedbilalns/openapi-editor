@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEditorStore } from './store';
 import {
   createEmptyDocument,
@@ -51,7 +51,8 @@ function fixture(): ApiDocument {
 
 beforeEach(() => {
   store().initializeDocument(fixture());
-  useEditorStore.setState({ activeTab: 'routes', yamlPreviewOpen: false });
+  // one undo step per action; coalescing has its own tests
+  useEditorStore.setState({ activeTab: 'routes', yamlPreviewOpen: false, historyCoalesceMs: 0 });
 });
 
 describe('editor store: document actions', () => {
@@ -420,6 +421,154 @@ describe('editor store: getSchemaUsageCount', () => {
 
   it('reflects deletions', () => {
     store().deleteRoute(listPets.id);
+    expect(store().getSchemaUsageCount(pet.id)).toBe(0);
+  });
+});
+
+describe('editor store: structural sharing', () => {
+  it('an edit copies only the touched node and its Map; everything else keeps identity', () => {
+    const prev = doc();
+    store().updateRoute(listPets.id, { summary: 'changed' });
+    const next = doc();
+    expect(next.routes).not.toBe(prev.routes);
+    expect(next.routes.get(listPets.id)).not.toBe(prev.routes.get(listPets.id));
+    expect(next.routes.get(getPet.id)).toBe(prev.routes.get(getPet.id));
+    expect(next.schemas).toBe(prev.schemas);
+    expect(next.info).toBe(prev.info);
+    expect(next.securitySchemes).toBe(prev.securitySchemes);
+    // the untouched parts of the edited route are shared too
+    expect(next.routes.get(listPets.id)!.responses).toBe(prev.routes.get(listPets.id)!.responses);
+  });
+
+  it('history snapshots share untouched nodes with the current document', () => {
+    store().updateField(pet.id, 'age', { description: 'years' });
+    const [before, after] = store().history;
+    expect(after.schemas.get(owner.id)).toBe(before.schemas.get(owner.id));
+    expect(after.routes).toBe(before.routes);
+    expect(after.schemas.get(pet.id)!.properties!.get('name')).toBe(before.schemas.get(pet.id)!.properties!.get('name'));
+    expect(before.schemas.get(pet.id)!.properties!.get('age')!.description).toBeUndefined();
+  });
+
+  it('no-op actions create no history entry and keep the document', () => {
+    const prev = doc();
+    store().addTag({ name: 'pets' });
+    store().deleteTag('unknown');
+    store().deleteRoute('unknown');
+    store().deleteSchema('unknown');
+    store().deleteField(pet.id, 'unknown');
+    store().updateResponse(listPets.id, '999', { description: 'x' });
+    store().updateServer(7, { url: 'x' });
+    expect(doc()).toBe(prev);
+    expect(store().history).toHaveLength(1);
+  });
+});
+
+describe('editor store: history coalescing', () => {
+  const summary = () => doc().routes.get(listPets.id)!.summary;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    useEditorStore.setState({ historyCoalesceMs: 1000 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const type = (text: string, at: number) => {
+    vi.setSystemTime(at);
+    store().updateRoute(listPets.id, { summary: text });
+  };
+
+  it('merges keystrokes on the same field into one undo step', () => {
+    type('L', 0);
+    type('Li', 200);
+    type('Lis', 400);
+    type('List all', 1300); // < 1s after the previous keystroke
+    expect(store().history).toHaveLength(2);
+    store().undo();
+    expect(summary()).toBe('List');
+    expect(store().canUndo()).toBe(false);
+    store().redo();
+    expect(summary()).toBe('List all');
+  });
+
+  it('starts a new step after a pause, on another field, on sealHistory and after undo', () => {
+    type('a', 0);
+    type('ab', 2500); // pause
+    vi.setSystemTime(2600);
+    store().updateRoute(listPets.id, { description: 'd' }); // other field
+    vi.setSystemTime(2700);
+    store().updateRoute(listPets.id, { description: 'de' });
+    store().sealHistory(); // e.g. on blur
+    vi.setSystemTime(2800);
+    store().updateRoute(listPets.id, { description: 'def' });
+    expect(store().history).toHaveLength(5);
+
+    store().undo();
+    vi.setSystemTime(2900);
+    store().updateRoute(listPets.id, { description: 'dx' }); // after undo: new step
+    expect(store().history).toHaveLength(5);
+    store().undo();
+    expect(doc().routes.get(listPets.id)!.description).toBe('de');
+  });
+
+  it('never merges structural edits', () => {
+    for (let i = 0; i < 3; i++) {
+      vi.setSystemTime(i * 10);
+      store().addParameter(getPet.id, { id: `p${i}`, name: `p${i}`, in: 'query', required: false, schema: str() });
+    }
+    vi.setSystemTime(40);
+    store().updateField(pet.id, 'age', { required: true });
+    vi.setSystemTime(50);
+    store().updateField(pet.id, 'age', { required: false });
+    expect(store().history).toHaveLength(6);
+  });
+
+  it('keeps merging while a field is renamed keystroke by keystroke', () => {
+    const names = ['age', 'ag', 'a', 'ab', 'abc'];
+    for (let i = 1; i < names.length; i++) {
+      vi.setSystemTime(i * 100);
+      store().updateField(pet.id, names[i - 1], { name: names[i] });
+    }
+    expect(Array.from(doc().schemas.get(pet.id)!.properties!.keys())).toEqual(['name', 'abc', 'owner']);
+    expect(store().history).toHaveLength(2);
+    store().undo();
+    expect(Array.from(doc().schemas.get(pet.id)!.properties!.keys())).toEqual(['name', 'age', 'owner']);
+  });
+});
+
+describe('editor store: bookkeeping', () => {
+  it('keeps only the most recent command log entries', () => {
+    for (let i = 0; i < 250; i++) store().updateInfo({ title: `t${i}` });
+    const log = store().commandLog;
+    expect(log).toHaveLength(100);
+    expect(log[log.length - 1].payload).toEqual({ title: 't249' });
+  });
+
+  it('clears selections that no longer exist after undo/redo or import', () => {
+    const r = createRoute('/new', 'get');
+    store().addRoute(r);
+    expect(store().selectedRouteId).toBe(r.id);
+    store().undo();
+    expect(store().selectedRouteId).toBeNull();
+
+    store().selectSchema(pet.id);
+    store().setDocument(createEmptyDocument());
+    expect(store().selectedSchemaId).toBeNull();
+    store().undo();
+    store().selectSchema(pet.id);
+    store().redo();
+    expect(store().selectedSchemaId).toBeNull();
+  });
+
+  it('memoizes usage counts per document version', () => {
+    const first = store().getSchemaUsageCounts();
+    expect(store().getSchemaUsageCounts()).toBe(first);
+    expect(first.get(pet.id)).toBe(1);
+    store().deleteRoute(listPets.id);
+    const second = store().getSchemaUsageCounts();
+    expect(second).not.toBe(first);
+    expect(second.get(pet.id)).toBeUndefined();
     expect(store().getSchemaUsageCount(pet.id)).toBe(0);
   });
 });

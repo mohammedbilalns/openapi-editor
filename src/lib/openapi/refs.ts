@@ -68,3 +68,17 @@ export function computeSchemaUsageCounts(doc: ApiDocument): Map<NodeId, number> 
   });
   return counts;
 }
+
+// Documents are immutable (see store.ts), so the counts can be cached per
+// document object; every edit produces a new document and a fresh entry.
+const usageCache = new WeakMap<ApiDocument, Map<NodeId, number>>();
+
+/** Memoized computeSchemaUsageCounts: O(document) once per document version, O(1) after. */
+export function getSchemaUsageCounts(doc: ApiDocument): ReadonlyMap<NodeId, number> {
+  let counts = usageCache.get(doc);
+  if (!counts) {
+    counts = computeSchemaUsageCounts(doc);
+    usageCache.set(doc, counts);
+  }
+  return counts;
+}
