@@ -180,6 +180,28 @@ describe('parseYaml: realistic spec', () => {
     expect(byName.get('oauth')).toMatchObject({ type: 'oauth2', description: 'OAuth2 code flow' });
     expect(byName.get('oidc')).toMatchObject({ type: 'openIdConnect', openIdConnectUrl: 'https://example.com/.well-known/openid-configuration' });
   });
+
+  it('parses oauth2 flows', () => {
+    const oauth = Array.from(doc.securitySchemes.values()).find((s) => s.name === 'oauth')!;
+    expect(oauth.flows).toEqual({
+      authorizationCode: {
+        authorizationUrl: 'https://example.com/oauth/authorize',
+        tokenUrl: 'https://example.com/oauth/token',
+        scopes: { 'read:pets': 'Read pets', 'write:pets': 'Modify pets' },
+      },
+    });
+  });
+
+  it('parses document and operation security, keeping explicit "no auth"', () => {
+    const idOf = (name: string) => Array.from(doc.securitySchemes.values()).find((s) => s.name === name)!.id;
+    expect(doc.security).toEqual([{ schemeId: idOf('bearerAuth'), scopes: [] }]);
+    expect(route(doc, 'post', '/pets').security).toEqual([
+      { schemeId: idOf('oauth'), scopes: ['write:pets'] },
+      { schemeId: idOf('apiKey'), scopes: [] },
+    ]);
+    expect(route(doc, 'get', '/health').security).toEqual([]); // explicit override
+    expect(route(doc, 'get', '/pets').security).toBeUndefined(); // inherits
+  });
 });
 
 describe('parseYaml: malformed and edge inputs', () => {
@@ -309,6 +331,28 @@ components:
     expect(errors.map((e) => `${e.code}:${e.message}`)).toEqual([
       'UNRESOLVED_REF:Unresolved reference: #/components/parameters/Nope',
       'UNRESOLVED_REF:Unresolved reference: #/components/responses/Missing',
+    ]);
+  });
+
+  it('reports security requirements the model cannot represent', () => {
+    const { doc, errors } = parseOk(`
+openapi: 3.0.0
+info: {title: T, version: '1'}
+security:
+  - {}
+  - {a: [], b: []}
+  - {ghost: []}
+paths: {}
+components:
+  securitySchemes:
+    a: {type: http, scheme: basic}
+    b: {type: apiKey, in: query, name: key}
+`);
+    expect(doc.security?.length).toBe(2); // AND split into alternatives
+    expect(errors.map((e) => e.code)).toEqual([
+      'UNSUPPORTED_SECURITY_REQUIREMENT',
+      'UNSUPPORTED_SECURITY_REQUIREMENT',
+      'UNRESOLVED_SECURITY_SCHEME',
     ]);
   });
 

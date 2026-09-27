@@ -77,6 +77,14 @@ describe('serializeToYaml: realistic spec round trip', () => {
     }
   });
 
+  it('keeps oauth2 flows and document/operation security', () => {
+    expect(out.components.securitySchemes).toEqual(original.components.securitySchemes);
+    expect(out.security).toEqual(original.security);
+    expect(out.paths['/pets'].post.security).toEqual(original.paths['/pets'].post.security);
+    expect(out.paths['/health'].get.security).toEqual([]);
+    expect(out.paths['/pets'].get).not.toHaveProperty('security');
+  });
+
   it('keeps servers and tags', () => {
     expect(out.servers.map((s: Json) => s.url)).toEqual(original.servers.map((s: Json) => s.url));
     expect(out.tags).toEqual(original.tags);
@@ -141,6 +149,20 @@ describe('serializeDocument: model -> OpenAPI mapping', () => {
     expect(Object.keys(out.paths['/a']).sort()).toEqual(['get', 'post']);
     expect(Object.keys(out.paths['/b']).sort()).toEqual(['delete', 'get']);
     expect(out.paths['/a'].get.responses).toEqual({ '200': { description: 'Successful response' } });
+  });
+
+  it('drops requirements on missing schemes instead of emitting {} (anonymous access)', () => {
+    const doc = createEmptyDocument();
+    doc.securitySchemes.set('s', { id: 's', name: 'bearer', type: 'http', scheme: 'bearer' });
+    const onlyDangling = createRoute('/a', 'get');
+    onlyDangling.security = [{ schemeId: 'gone', scopes: [] }];
+    const mixed = createRoute('/b', 'get');
+    mixed.security = [{ schemeId: 'gone', scopes: [] }, { schemeId: 's', scopes: [] }];
+    doc.routes.set(onlyDangling.id, onlyDangling);
+    doc.routes.set(mixed.id, mixed);
+    const out = exported(doc);
+    expect(out.paths['/a'].get).not.toHaveProperty('security'); // falls back to root security
+    expect(out.paths['/b'].get.security).toEqual([{ bearer: [] }]);
   });
 
   it('omits empty optional sections', () => {

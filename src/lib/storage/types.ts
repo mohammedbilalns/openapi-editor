@@ -40,6 +40,7 @@ export interface SerializedApiDocument {
   schemas: [string, SerializedSchema][];
   securitySchemes: [string, SecurityScheme][];
   tags: ApiDocument["tags"];
+  security?: ApiDocument["security"];
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   ParameterDef,
   ResponseDef,
   RequestBody,
+  SecurityRequirement,
   SecurityScheme,
   Server,
   Tag,
@@ -628,6 +629,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const state = get();
     const newDoc = cloneDocument(state.document);
     newDoc.securitySchemes.delete(id);
+    // Drop requirements on the deleted scheme. A list emptied this way falls
+    // back to inheriting (undefined), not to "no authentication" ([]).
+    const withoutScheme = (reqs: SecurityRequirement[] | undefined) => {
+      if (!reqs || !reqs.some((r) => r.schemeId === id)) return reqs;
+      const kept = reqs.filter((r) => r.schemeId !== id);
+      return kept.length > 0 ? kept : undefined;
+    };
+    newDoc.security = withoutScheme(newDoc.security);
+    for (const [routeId, route] of newDoc.routes) {
+      const security = withoutScheme(route.security);
+      if (security !== route.security) newDoc.routes.set(routeId, { ...route, security });
+    }
     
     const newHistory = pushHistory(state, newDoc);
     set({

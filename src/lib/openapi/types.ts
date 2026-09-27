@@ -171,6 +171,8 @@ export interface ApiDocument {
   schemas: Map<NodeId, SchemaNode>;
   securitySchemes: Map<NodeId, SecurityScheme>;
   tags: Tag[];
+  /** Document-wide security (OpenAPI root `security`); routes inherit it unless they set their own. */
+  security?: SecurityRequirement[];
 }
 
 // Command types for state mutations

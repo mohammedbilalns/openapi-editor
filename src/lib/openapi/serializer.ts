@@ -7,6 +7,7 @@ import {
   ParameterDef,
   ResponseDef,
   RequestBody,
+  SecurityRequirement,
   SecurityScheme,
   NodeId,
 } from './types';
@@ -42,6 +43,7 @@ interface OpenAPIDocument {
     name: string;
     description?: string;
   }>;
+  security?: Array<Record<string, string[]>>;
 }
 
 export function serializeToYaml(doc: ApiDocument): string {
@@ -124,6 +126,11 @@ export function serializeDocument(doc: ApiDocument): OpenAPIDocument {
     if (Object.keys(securitySchemes).length > 0) {
       output.components.securitySchemes = securitySchemes;
     }
+  }
+
+  const rootSecurity = serializeSecurity(doc.security, doc);
+  if (rootSecurity) {
+    output.security = rootSecurity;
   }
 
   // Paths - group routes by path
@@ -297,16 +304,31 @@ function serializeOperation(route: Route, doc: ApiDocument): Record<string, unkn
   result.responses = responses;
 
   // Security
-  if (route.security && route.security.length > 0) {
-    result.security = route.security.map((s) => {
-      const scheme = doc.securitySchemes.get(s.schemeId);
-      if (scheme) {
-        return { [scheme.name]: s.scopes };
-      }
-      return {};
-    });
+  const security = serializeSecurity(route.security, doc);
+  if (security) {
+    result.security = security;
   }
 
+  return result;
+}
+
+/**
+ * Requirements pointing at a deleted scheme are dropped (an empty `{}` would
+ * mean "anonymous access allowed"). An explicitly empty list is kept, since it
+ * means "no authentication"; a list that only held dangling requirements is
+ * omitted so the operation falls back to the document security.
+ */
+function serializeSecurity(
+  requirements: SecurityRequirement[] | undefined,
+  doc: ApiDocument
+): Array<Record<string, string[]>> | undefined {
+  if (!requirements) return undefined;
+  const result: Array<Record<string, string[]>> = [];
+  for (const req of requirements) {
+    const scheme = doc.securitySchemes.get(req.schemeId);
+    if (scheme) result.push({ [scheme.name]: req.scopes });
+  }
+  if (result.length === 0 && requirements.length > 0) return undefined;
   return result;
 }
 

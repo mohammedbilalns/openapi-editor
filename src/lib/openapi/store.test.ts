@@ -197,6 +197,27 @@ describe('editor store: document actions', () => {
   });
 });
 
+describe('editor store: deleting a security scheme', () => {
+  it('removes requirements on it from the document and routes', () => {
+    store().addSecurityScheme({ id: 'bearer', name: 'bearer', type: 'http', scheme: 'bearer' });
+    store().addSecurityScheme({ id: 'key', name: 'key', type: 'apiKey', in: 'header', paramName: 'X-Key' });
+    useEditorStore.setState((s) => ({
+      document: { ...s.document, security: [{ schemeId: 'bearer', scopes: [] }, { schemeId: 'key', scopes: [] }] },
+    }));
+    store().updateRoute(listPets.id, { security: [{ schemeId: 'bearer', scopes: [] }] });
+    store().updateRoute(getPet.id, { security: [{ schemeId: 'key', scopes: [] }, { schemeId: 'bearer', scopes: [] }] });
+
+    store().deleteSecurityScheme('bearer');
+    expect(doc().security).toEqual([{ schemeId: 'key', scopes: [] }]);
+    // the only requirement is gone: inherit again rather than become public ([])
+    expect(doc().routes.get(listPets.id)!.security).toBeUndefined();
+    expect(doc().routes.get(getPet.id)!.security).toEqual([{ schemeId: 'key', scopes: [] }]);
+
+    store().undo();
+    expect(doc().routes.get(listPets.id)!.security).toEqual([{ schemeId: 'bearer', scopes: [] }]);
+  });
+});
+
 describe('editor store: selection and UI state', () => {
   it('selection and tabs do not touch history or documentVersion', () => {
     const v = store().documentVersion;

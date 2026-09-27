@@ -1,4 +1,4 @@
-import type { ApiDocument, Route, SchemaNode, ResponseDef, RequestBody, MediaType, PropertyDef } from "@/lib/openapi/types";
+import type { ApiDocument, Route, SchemaNode, ResponseDef, RequestBody, MediaType, PropertyDef, SecurityScheme } from "@/lib/openapi/types";
 import type {
   StoredProject,
   SerializedProject,
@@ -165,6 +165,7 @@ export function serializeDocument(doc: ApiDocument): SerializedApiDocument {
     schemas: Array.from(doc.schemas.entries()).map(([id, schema]) => [id, serializeSchema(schema)]),
     securitySchemes: Array.from(doc.securitySchemes.entries()),
     tags: doc.tags,
+    security: doc.security,
   };
 }
 
@@ -183,8 +184,9 @@ export function deserializeDocument(serialized: SerializedApiDocument): ApiDocum
     schemas: new Map(
       serialized.schemas.map(([id, schema]) => [id, deserializeSchema(schema)])
     ),
-    securitySchemes: new Map(serialized.securitySchemes),
+    securitySchemes: new Map(serialized.securitySchemes as [string, SecurityScheme][]),
     tags: serialized.tags,
+    security: serialized.security,
   };
 }
 

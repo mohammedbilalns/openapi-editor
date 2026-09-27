@@ -8,6 +8,9 @@ import {
   ResponseDef,
   RequestBody,
   MediaType,
+  OAuthFlow,
+  OAuthFlows,
+  SecurityRequirement,
   SecurityScheme,
   InfoObject,
   NodeId,
@@ -69,6 +72,8 @@ function asObject(value: unknown): RawObject {
 interface ParseContext {
   /** component schema name -> node id, for $ref resolution */
   schemaNameToId: Map<string, NodeId>;
+  /** security scheme name -> node id, for security requirements */
+  securitySchemeNameToId: Map<string, NodeId>;
   /** raw `components` object, for resolving parameter/response/... refs */
   components: Record<string, RawObject>;
   errors: ValidationError[];
@@ -163,7 +168,7 @@ export function parseYaml(yamlContent: string): ParseResult {
   for (const [section, value] of Object.entries(asObject(parsed.components))) {
     components[section] = asObject(value);
   }
-  const ctx: ParseContext = { schemaNameToId: new Map(), components, errors };
+  const ctx: ParseContext = { schemaNameToId: new Map(), securitySchemeNameToId: new Map(), components, errors };
 
   // Create document
   const doc = createEmptyDocument();
@@ -216,6 +221,13 @@ export function parseYaml(yamlContent: string): ParseResult {
   for (const [name, schemeData] of Object.entries(components.securitySchemes ?? {})) {
     const scheme = parseSecurityScheme(name, schemeData);
     doc.securitySchemes.set(scheme.id, scheme);
+    ctx.securitySchemeNameToId.set(name, scheme.id);
+  }
+
+  // Document-wide security
+  const rootSecurity = (parsed as RawObject).security;
+  if (Array.isArray(rootSecurity)) {
+    doc.security = parseSecurityRequirements(rootSecurity, ctx);
   }
 
   // Parse paths
@@ -429,7 +441,60 @@ function parseSecurityScheme(name: string, data: unknown): SecurityScheme {
     scheme.openIdConnectUrl = schemeData.openIdConnectUrl as string;
   }
 
+  if (scheme.type === 'oauth2') {
+    const flows: OAuthFlows = {};
+    const rawFlows = asObject(schemeData.flows);
+    for (const key of ['implicit', 'password', 'clientCredentials', 'authorizationCode'] as const) {
+      if (!rawFlows[key]) continue;
+      const raw = asObject(rawFlows[key]);
+      const flow: OAuthFlow = { scopes: { ...(asObject(raw.scopes) as Record<string, string>) } };
+      if (typeof raw.authorizationUrl === 'string') flow.authorizationUrl = raw.authorizationUrl;
+      if (typeof raw.tokenUrl === 'string') flow.tokenUrl = raw.tokenUrl;
+      if (typeof raw.refreshUrl === 'string') flow.refreshUrl = raw.refreshUrl;
+      flows[key] = flow;
+    }
+    scheme.flows = flows;
+  }
+
   return scheme;
+}
+
+/**
+ * Parse a security requirement list. The model stores one scheme per
+ * requirement (alternatives, OR); an empty requirement `{}` (anonymous access)
+ * or a requirement combining several schemes (AND) cannot be represented and
+ * is reported.
+ */
+function parseSecurityRequirements(list: unknown[], ctx: ParseContext): SecurityRequirement[] {
+  const result: SecurityRequirement[] = [];
+  for (const raw of list) {
+    const entries = Object.entries(asObject(raw));
+    if (entries.length !== 1) {
+      ctx.errors.push({
+        code: 'UNSUPPORTED_SECURITY_REQUIREMENT',
+        message:
+          entries.length === 0
+            ? 'Optional security ({}) is not supported and was dropped'
+            : `Combined security requirement (${entries.map(([n]) => n).join(' AND ')}) was split into alternatives`,
+        severity: 'warning',
+        location: {},
+      });
+    }
+    for (const [name, scopes] of entries) {
+      const schemeId = ctx.securitySchemeNameToId.get(name);
+      if (!schemeId) {
+        ctx.errors.push({
+          code: 'UNRESOLVED_SECURITY_SCHEME',
+          message: `Unknown security scheme: ${name}`,
+          severity: 'warning',
+          location: {},
+        });
+        continue;
+      }
+      result.push({ schemeId, scopes: Array.isArray(scopes) ? scopes.map(String) : [] });
+    }
+  }
+  return result;
 }
 
 /** Resolve and parse a list of raw parameters, skipping empty or unresolvable entries. */
@@ -470,6 +535,10 @@ function parseOperation(
   }
   if (data.deprecated) {
     route.deprecated = true;
+  }
+  if (Array.isArray(data.security)) {
+    // an explicit empty list means "no authentication" and overrides the root
+    route.security = parseSecurityRequirements(data.security, ctx);
   }
 
   // Parameters: path-item level ones apply to every operation unless the
