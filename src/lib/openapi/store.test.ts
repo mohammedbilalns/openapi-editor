@@ -381,6 +381,22 @@ describe('editor store: getSchemaUsageCount', () => {
     expect(store().getSchemaUsageCount(union.id)).toBe(0);
   });
 
+  it('counts references nested inside inline schemas (e.g. arrays of refs)', () => {
+    const arrayOfOwners = createSchema('array');
+    arrayOfOwners.items = ref(owner);
+    store().addResponse(getPet.id, '200', {
+      id: 'x',
+      description: 'owners',
+      content: new Map([['application/json', { schema: { kind: 'inline', schema: arrayOfOwners } }]]),
+    });
+    const wrapper = createSchema('object');
+    wrapper.properties!.set('primary', { name: 'primary', required: false, schema: ref(owner) });
+    store().addFieldToSchema(pet.id, { name: 'contact', required: false, schema: { kind: 'inline', schema: wrapper } });
+
+    // Pet.owner + response items + Pet.contact.primary
+    expect(store().getSchemaUsageCount(owner.id)).toBe(3);
+  });
+
   it('reflects deletions', () => {
     store().deleteRoute(listPets.id);
     expect(store().getSchemaUsageCount(pet.id)).toBe(0);

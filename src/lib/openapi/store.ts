@@ -21,6 +21,7 @@ import {
   createRoute,
   generateId,
 } from './types';
+import { computeSchemaUsageCounts } from './refs';
 
 interface EditorState {
   // Document state
@@ -707,71 +708,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   getSchemaById: (id) => get().document.schemas.get(id),
   getRouteById: (id) => get().document.routes.get(id),
   
-  getSchemaUsageCount: (id) => {
-    const state = get();
-    let count = 0;
-    
-    // Check routes for references
-    for (const route of state.document.routes.values()) {
-      // Check parameters
-      for (const param of route.parameters) {
-        if (param.schema.kind === 'ref' && param.schema.targetId === id) {
-          count++;
-        }
-      }
-      
-      // Check request body
-      if (route.requestBody?.content) {
-        for (const media of route.requestBody.content.values()) {
-          if (media.schema.kind === 'ref' && media.schema.targetId === id) {
-            count++;
-          }
-        }
-      }
-      
-      // Check responses
-      for (const response of route.responses.values()) {
-        if (response.content) {
-          for (const media of response.content.values()) {
-            if (media.schema.kind === 'ref' && media.schema.targetId === id) {
-              count++;
-            }
-          }
-        }
-      }
-    }
-    
-    // Check other schemas for references
-    for (const schema of state.document.schemas.values()) {
-      if (schema.id === id) continue;
-      
-      // Check properties
-      if (schema.properties) {
-        for (const prop of schema.properties.values()) {
-          if (prop.schema.kind === 'ref' && prop.schema.targetId === id) {
-            count++;
-          }
-        }
-      }
-      
-      // Check array items
-      if (schema.items?.kind === 'ref' && schema.items.targetId === id) {
-        count++;
-      }
-      
-      // Check variants
-      if (schema.variants) {
-        for (const variant of schema.variants) {
-          if (variant.kind === 'ref' && variant.targetId === id) {
-            count++;
-          }
-        }
-      }
-    }
-    
-    return count;
-  },
-  
+  getSchemaUsageCount: (id) => computeSchemaUsageCounts(get().document).get(id) ?? 0,
+
   // Initialize document from storage without adding to history
   initializeDocument: (doc) => {
     set({
