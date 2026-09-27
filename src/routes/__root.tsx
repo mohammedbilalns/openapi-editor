@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { DefaultErrorComponent } from '@/components/default-error'
 import { NotFound } from '@/components/not-found'
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration'
+import { ConfirmHost, Toaster } from '@/components/shared'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { THEME_COLORS, themeInitScript } from '@/lib/theme'
@@ -44,6 +45,8 @@ function RootComponent() {
     <ThemeProvider>
       <TooltipProvider delay={300}>
         <Outlet />
+        <ConfirmHost />
+        <Toaster />
       </TooltipProvider>
       <ServiceWorkerRegistration />
     </ThemeProvider>

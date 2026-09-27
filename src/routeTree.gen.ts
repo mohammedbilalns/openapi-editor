@@ -9,50 +9,204 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppRoutesIndexRouteImport } from './routes/_app/routes/index'
+import { Route as AppRoutesRouteIdRouteImport } from './routes/_app/routes/$routeId'
+import { Route as AppSchemasIndexRouteImport } from './routes/_app/schemas/index'
+import { Route as AppSchemasSchemaIdRouteImport } from './routes/_app/schemas/$schemaId'
+import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
+import { Route as AppSettingsSectionRouteImport } from './routes/_app/settings/$section'
 
-const IndexRoute = IndexRouteImport.update({
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRoutesIndexRoute = AppRoutesIndexRouteImport.update({
+  id: '/routes/',
+  path: '/routes/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRoutesRouteIdRoute = AppRoutesRouteIdRouteImport.update({
+  id: '/routes/$routeId',
+  path: '/routes/$routeId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSchemasIndexRoute = AppSchemasIndexRouteImport.update({
+  id: '/schemas/',
+  path: '/schemas/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSchemasSchemaIdRoute = AppSchemasSchemaIdRouteImport.update({
+  id: '/schemas/$schemaId',
+  path: '/schemas/$schemaId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsSectionRoute = AppSettingsSectionRouteImport.update({
+  id: '/settings/$section',
+  path: '/settings/$section',
+  getParentRoute: () => AppRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
+  '/routes/$routeId': typeof AppRoutesRouteIdRoute
+  '/schemas/$schemaId': typeof AppSchemasSchemaIdRoute
+  '/settings/$section': typeof AppSettingsSectionRoute
+  '/routes/': typeof AppRoutesIndexRoute
+  '/schemas/': typeof AppSchemasIndexRoute
+  '/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
+  '/routes/$routeId': typeof AppRoutesRouteIdRoute
+  '/schemas/$schemaId': typeof AppSchemasSchemaIdRoute
+  '/settings/$section': typeof AppSettingsSectionRoute
+  '/routes': typeof AppRoutesIndexRoute
+  '/schemas': typeof AppSchemasIndexRoute
+  '/settings': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/_app/': typeof AppIndexRoute
+  '/_app/routes/$routeId': typeof AppRoutesRouteIdRoute
+  '/_app/schemas/$schemaId': typeof AppSchemasSchemaIdRoute
+  '/_app/settings/$section': typeof AppSettingsSectionRoute
+  '/_app/routes/': typeof AppRoutesIndexRoute
+  '/_app/schemas/': typeof AppSchemasIndexRoute
+  '/_app/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/routes/$routeId'
+    | '/schemas/$schemaId'
+    | '/settings/$section'
+    | '/routes/'
+    | '/schemas/'
+    | '/settings/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/routes/$routeId'
+    | '/schemas/$schemaId'
+    | '/settings/$section'
+    | '/routes'
+    | '/schemas'
+    | '/settings'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/_app/'
+    | '/_app/routes/$routeId'
+    | '/_app/schemas/$schemaId'
+    | '/_app/settings/$section'
+    | '/_app/routes/'
+    | '/_app/schemas/'
+    | '/_app/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/routes/': {
+      id: '/_app/routes/'
+      path: '/routes'
+      fullPath: '/routes/'
+      preLoaderRoute: typeof AppRoutesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/routes/$routeId': {
+      id: '/_app/routes/$routeId'
+      path: '/routes/$routeId'
+      fullPath: '/routes/$routeId'
+      preLoaderRoute: typeof AppRoutesRouteIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/schemas/': {
+      id: '/_app/schemas/'
+      path: '/schemas'
+      fullPath: '/schemas/'
+      preLoaderRoute: typeof AppSchemasIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/schemas/$schemaId': {
+      id: '/_app/schemas/$schemaId'
+      path: '/schemas/$schemaId'
+      fullPath: '/schemas/$schemaId'
+      preLoaderRoute: typeof AppSchemasSchemaIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/': {
+      id: '/_app/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AppSettingsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/$section': {
+      id: '/_app/settings/$section'
+      path: '/settings/$section'
+      fullPath: '/settings/$section'
+      preLoaderRoute: typeof AppSettingsSectionRouteImport
+      parentRoute: typeof AppRoute
     }
   }
 }
 
+interface AppRouteChildren {
+  AppIndexRoute: typeof AppIndexRoute
+  AppRoutesRouteIdRoute: typeof AppRoutesRouteIdRoute
+  AppSchemasSchemaIdRoute: typeof AppSchemasSchemaIdRoute
+  AppSettingsSectionRoute: typeof AppSettingsSectionRoute
+  AppRoutesIndexRoute: typeof AppRoutesIndexRoute
+  AppSchemasIndexRoute: typeof AppSchemasIndexRoute
+  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppIndexRoute: AppIndexRoute,
+  AppRoutesRouteIdRoute: AppRoutesRouteIdRoute,
+  AppSchemasSchemaIdRoute: AppSchemasSchemaIdRoute,
+  AppSettingsSectionRoute: AppSettingsSectionRoute,
+  AppRoutesIndexRoute: AppRoutesIndexRoute,
+  AppSchemasIndexRoute: AppSchemasIndexRoute,
+  AppSettingsIndexRoute: AppSettingsIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
