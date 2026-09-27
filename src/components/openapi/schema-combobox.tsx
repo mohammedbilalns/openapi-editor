@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import { Check, ChevronsUpDown, Link2, Box } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -79,20 +77,19 @@ export function SchemaCombobox({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
+      <PopoverTrigger
+        render={<Button
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn('w-full justify-between bg-transparent', triggerClassName)}
-        >
-          <span className="flex items-center gap-2 truncate">
-            {isRef && <Link2 className="h-3 w-3 shrink-0" />}
-            {value === 'inline' && <Box className="h-3 w-3 shrink-0" />}
-            <span className="truncate">{getDisplayLabel()}</span>
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
+          className={cn('w-full justify-between bg-transparent', triggerClassName)} />}
+      >
+        <span className="flex items-center gap-2 truncate">
+          {isRef && <Link2 className="h-3 w-3 shrink-0" />}
+          {value === 'inline' && <Box className="h-3 w-3 shrink-0" />}
+          <span className="truncate">{getDisplayLabel()}</span>
+        </span>
+        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </PopoverTrigger>
       <PopoverContent className={cn('w-[250px] p-0', className)} align="start">
         <Command>

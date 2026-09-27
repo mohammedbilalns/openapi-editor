@@ -1,5 +1,3 @@
-'use client';
-
 import React from "react"
 
 import { useState, useRef } from 'react';
@@ -22,16 +20,26 @@ import { useEditorStore } from '@/lib/openapi/store';
 import { parseYaml } from '@/lib/openapi/parser';
 import { ValidationError } from '@/lib/openapi/types';
 import { cn } from '@/lib/utils';
-import { fetchOpenApiFromUrl } from '@/app/actions/fetch-openapi';
+import { fetchOpenApiFromUrl } from '@/lib/fetch-openapi';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 
 interface ImportDialogProps {
-  trigger?: React.ReactNode;
+  /** Custom trigger element; a default "Import" button is rendered otherwise. */
+  trigger?: React.ReactElement;
+  /** Controlled open state. When provided, no trigger is rendered. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function ImportDialog({ trigger }: ImportDialogProps) {
+export function ImportDialog({ trigger, open: openProp, onOpenChange }: ImportDialogProps) {
   const { setDocument } = useEditorStore();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isControlled = openProp !== undefined;
+  const open = isControlled ? openProp : uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    if (!isControlled) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
   const [yamlContent, setYamlContent] = useState('');
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [importSuccess, setImportSuccess] = useState(false);
@@ -136,15 +144,16 @@ export function ImportDialog({ trigger }: ImportDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button variant="outline" size="sm">
+      {!isControlled &&
+        (trigger ? (
+          <DialogTrigger render={trigger} />
+        ) : (
+          <DialogTrigger render={<Button variant="outline" size="sm" />}>
             <Upload className="mr-1 h-4 w-4" />
             Import
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl border-4 border-foreground neo-shadow-lg">
+          </DialogTrigger>
+        ))}
+      <DialogContent className="max-w-2xl border-4 border-foreground">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold uppercase tracking-tight">Import OpenAPI Specification</DialogTitle>
           <DialogDescription className="font-mono text-sm">
@@ -157,20 +166,20 @@ export function ImportDialog({ trigger }: ImportDialogProps) {
             <TabsList className="grid w-full grid-cols-3 gap-1 bg-transparent p-0">
               <TabsTrigger 
                 value="paste"
-                className="border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary data-[state=active]:neo-shadow-sm"
+                className="border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary"
               >
                 Paste YAML
               </TabsTrigger>
               <TabsTrigger 
                 value="file"
-                className="border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary data-[state=active]:neo-shadow-sm"
+                className="border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary"
               >
                 Upload File
               </TabsTrigger>
               <TabsTrigger 
                 value="url"
                 disabled={!isOnline}
-                className="border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary data-[state=active]:neo-shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 From URL {!isOnline && '(Offline)'}
               </TabsTrigger>
@@ -240,7 +249,7 @@ export function ImportDialog({ trigger }: ImportDialogProps) {
                 <Button
                   onClick={handleFetchUrl}
                   disabled={!urlInput.trim() || isLoadingUrl}
-                  className="h-12 neo-btn-secondary"
+                  className="h-12"
                 >
                   {isLoadingUrl ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -323,13 +332,12 @@ export function ImportDialog({ trigger }: ImportDialogProps) {
         )}
 
         <DialogFooter className="gap-3">
-          <Button onClick={() => handleClose(false)} className="neo-btn-outline">
+          <Button variant="outline" onClick={() => handleClose(false)}>
             Cancel
           </Button>
           <Button
             onClick={handleImport}
             disabled={!yamlContent.trim() || (hasErrors && !importSuccess)}
-            className="neo-btn-accent"
           >
             {importSuccess ? 'Done' : 'Import'}
           </Button>

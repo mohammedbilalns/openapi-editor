@@ -1,5 +1,3 @@
-'use client';
-
 import React from "react"
 
 import { useState, useEffect } from 'react';
@@ -183,11 +181,11 @@ export function RouteList({ onSelect }: RouteListProps) {
       <div className="flex items-center justify-between border-b-4 border-foreground p-4">
         <h2 className="text-lg font-bold uppercase tracking-tight text-foreground">Routes</h2>
         <Dialog open={newRouteDialogOpen} onOpenChange={setNewRouteDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="neo-btn-accent">
-              <Plus className="mr-1 h-4 w-4" />
-              New
-            </Button>
+          <DialogTrigger
+            render={<Button  />}
+          >
+            <Plus className="mr-1 h-4 w-4" />
+            New
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -236,17 +234,16 @@ export function RouteList({ onSelect }: RouteListProps) {
                 <Label>Tags</Label>
                 {availableTags.length > 0 ? (
                   <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
+                    <PopoverTrigger
+                      render={<Button
                         variant="outline"
                         role="combobox"
-                        className="w-full justify-between border-2 border-foreground bg-background font-normal"
-                      >
-                        {newRouteTags.length > 0
-                          ? `${newRouteTags.length} tag${newRouteTags.length > 1 ? 's' : ''} selected`
-                          : 'Select tags...'}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
+                        className="w-full justify-between border-2 border-foreground bg-background font-normal" />}
+                    >
+                      {newRouteTags.length > 0
+                        ? `${newRouteTags.length} tag${newRouteTags.length > 1 ? 's' : ''} selected`
+                        : 'Select tags...'}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0 border-2 border-foreground">
                       <Command>
@@ -325,10 +322,10 @@ export function RouteList({ onSelect }: RouteListProps) {
                 <CollapsibleTrigger className="flex w-full items-center gap-2 border-2 border-foreground bg-muted px-3 py-2 hover:bg-muted/80 min-w-0">
                   <ChevronDown className="h-4 w-4 shrink-0 transition-transform [[data-state=closed]_&]:-rotate-90" />
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="flex-1 truncate text-left font-bold uppercase text-sm">
-                        {tag}
-                      </span>
+                    <TooltipTrigger
+                      render={<span className="flex-1 truncate text-left font-bold uppercase text-sm" />}
+                    >
+                      {tag}
                     </TooltipTrigger>
                     <TooltipContent side="right">
                       <p>{tag}</p>
@@ -346,7 +343,7 @@ export function RouteList({ onSelect }: RouteListProps) {
                         key={route.id}
                         className={cn(
                           'group flex cursor-pointer items-center gap-3 border-2 border-transparent px-3 py-3 transition-all hover:border-foreground hover:bg-muted min-w-0',
-                          selectedRouteId === route.id && 'border-foreground bg-secondary neo-shadow-sm'
+                          selectedRouteId === route.id && 'border-foreground bg-secondary'
                         )}
                         onClick={() => {
                           selectRoute(route.id);
@@ -363,10 +360,10 @@ export function RouteList({ onSelect }: RouteListProps) {
                           {route.method.toUpperCase()}
                         </Badge>
                         <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex-1 truncate font-mono text-sm font-bold text-foreground min-w-0">
-                              {route.path}
-                            </span>
+                          <TooltipTrigger
+                            render={<span className="flex-1 truncate font-mono text-sm font-bold text-foreground min-w-0" />}
+                          >
+                            {route.path}
                           </TooltipTrigger>
                           <TooltipContent side="right">
                             <p className="font-mono">{route.path}</p>
@@ -438,7 +435,7 @@ export function RouteEditor({ routeId }: RouteEditorProps) {
         <div className="flex items-center gap-4">
           <Badge
             className={cn(
-              'w-24 justify-center border-2 border-foreground py-2 text-sm font-bold uppercase neo-shadow-sm',
+              'w-24 justify-center border-2 border-foreground py-2 text-sm font-bold uppercase',
               method?.color,
               'text-foreground'
             )}
@@ -495,17 +492,16 @@ export function RouteEditor({ routeId }: RouteEditorProps) {
                 </div>
               ) : (
                 <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
+                  <PopoverTrigger
+                    render={<Button
                       variant="outline"
                       role="combobox"
-                      className="w-full justify-between border-2 border-foreground bg-background font-normal"
-                    >
-                      {route.tags.length > 0
-                        ? `${route.tags.length} tag${route.tags.length > 1 ? 's' : ''} selected`
-                        : 'Select tags...'}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
+                      className="w-full justify-between border-2 border-foreground bg-background font-normal" />}
+                  >
+                    {route.tags.length > 0
+                      ? `${route.tags.length} tag${route.tags.length > 1 ? 's' : ''} selected`
+                      : 'Select tags...'}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </PopoverTrigger>
                   <PopoverContent className="w-full p-0 border-2 border-foreground">
                     <Command>
@@ -560,15 +556,15 @@ export function RouteEditor({ routeId }: RouteEditorProps) {
         <div className="space-y-4">
           {/* Parameters Section */}
           <Collapsible open={parametersOpen} onOpenChange={setParametersOpen}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between">
-                <span className="font-medium">Parameters</span>
-                {parametersOpen ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-              </Button>
+            <CollapsibleTrigger
+              render={<Button variant="ghost" className="w-full justify-between" />}
+            >
+              <span className="font-medium">Parameters</span>
+              {parametersOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 pt-2">
               {/* Path Parameters */}
@@ -626,15 +622,15 @@ export function RouteEditor({ routeId }: RouteEditorProps) {
           {['post', 'put', 'patch'].includes(route.method) && (
             <>
               <Collapsible open={requestBodyOpen} onOpenChange={setRequestBodyOpen}>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" className="w-full justify-between">
-                    <span className="font-medium">Request Body</span>
-                    {requestBodyOpen ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
-                  </Button>
+                <CollapsibleTrigger
+                  render={<Button variant="ghost" className="w-full justify-between" />}
+                >
+                  <span className="font-medium">Request Body</span>
+                  {requestBodyOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-2">
                   <RequestBodyEditor
@@ -650,15 +646,15 @@ export function RouteEditor({ routeId }: RouteEditorProps) {
 
           {/* Responses Section */}
           <Collapsible open={responsesOpen} onOpenChange={setResponsesOpen}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between">
-                <span className="font-medium">Responses</span>
-                {responsesOpen ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-              </Button>
+            <CollapsibleTrigger
+              render={<Button variant="ghost" className="w-full justify-between" />}
+            >
+              <span className="font-medium">Responses</span>
+              {responsesOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
             </CollapsibleTrigger>
             <CollapsibleContent className="pt-2">
               <ResponsesEditor
@@ -993,11 +989,11 @@ function ResponsesEditor({
       ))}
 
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogTrigger asChild>
-          <Button variant="outline" size="sm" className="w-full bg-transparent">
-            <Plus className="mr-1 h-4 w-4" />
-            Add Response
-          </Button>
+        <DialogTrigger
+          render={<Button variant="outline" size="sm" className="w-full bg-transparent" />}
+        >
+          <Plus className="mr-1 h-4 w-4" />
+          Add Response
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
@@ -1006,19 +1002,18 @@ function ResponsesEditor({
           <div className="py-4">
             <Label>Status Code</Label>
             <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
-              <PopoverTrigger asChild>
-                <Button
+              <PopoverTrigger
+                render={<Button
                   variant="outline"
                   role="combobox"
                   aria-expanded={comboboxOpen}
-                  className="mt-2 w-full justify-between bg-transparent"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className={cn("h-2 w-2 rounded-full", getStatusCodeColor(newStatusCode))} />
-                    {selectedStatusLabel}
-                  </span>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
+                  className="mt-2 w-full justify-between bg-transparent" />}
+              >
+                <span className="flex items-center gap-2">
+                  <span className={cn("h-2 w-2 rounded-full", getStatusCodeColor(newStatusCode))} />
+                  {selectedStatusLabel}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </PopoverTrigger>
               <PopoverContent className="w-[350px] p-0" align="start">
                 <Command>

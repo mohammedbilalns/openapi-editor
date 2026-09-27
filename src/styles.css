@@ -1,186 +1,338 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * Quiet Utility design tokens — see docs/DESIGN.md (§2.1, §2.2, §3.1, §5, §14).
+ * Only src/ is scanned for class names.
+ */
+@import "tailwindcss" source(".");
+@import "tw-animate-css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+@custom-variant dark (&:is(.dark *));
+
+/* Data-attribute variants for Base UI (boolean attributes) and cmdk ("true"). */
+@custom-variant data-open {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
+    @slot;
   }
-  /* Muted border-foreground in dark mode for easier viewing */
-  .dark .border-foreground {
-    border-color: hsl(var(--border-strong));
+}
+@custom-variant data-closed {
+  &:where([data-state="closed"]),
+  &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
   }
-  .dark .border-b-foreground {
-    border-bottom-color: hsl(var(--border-strong));
+}
+@custom-variant data-checked {
+  &:where([data-state="checked"]),
+  &:where([data-checked]:not([data-checked="false"])) {
+    @slot;
   }
-  .dark .border-t-foreground {
-    border-top-color: hsl(var(--border-strong));
+}
+@custom-variant data-unchecked {
+  &:where([data-state="unchecked"]),
+  &:where([data-unchecked]:not([data-unchecked="false"])) {
+    @slot;
   }
-  .dark .border-l-foreground {
-    border-left-color: hsl(var(--border-strong));
+}
+@custom-variant data-selected {
+  &:where([data-selected]:not([data-selected="false"])) {
+    @slot;
   }
-  .dark .border-r-foreground {
-    border-right-color: hsl(var(--border-strong));
+}
+@custom-variant data-highlighted {
+  &:where([data-highlighted]:not([data-highlighted="false"])) {
+    @slot;
   }
-  /* Muted dividers in dark mode */
-  .dark .bg-foreground {
-    background-color: hsl(var(--border-strong));
+}
+@custom-variant data-pressed {
+  &:where([data-pressed]:not([data-pressed="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-disabled {
+  &:where([data-disabled]:not([data-disabled="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-active {
+  &:where([data-state="active"]),
+  &:where([data-active]:not([data-active="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
   }
 }
 
-@layer base {
-  :root {
-    /* Neobrutalist Light Theme - Bold, high contrast */
-    --background: 60 30% 96%;
-    --foreground: 0 0% 5%;
-    --card: 60 30% 96%;
-    --card-foreground: 0 0% 5%;
-    --popover: 60 30% 96%;
-    --popover-foreground: 0 0% 5%;
-    --primary: 0 0% 5%;
-    --primary-foreground: 60 30% 96%;
-    --secondary: 45 100% 60%;
-    --secondary-foreground: 0 0% 5%;
-    --muted: 45 20% 88%;
-    --muted-foreground: 0 0% 35%;
-    --accent: 150 80% 45%;
-    --accent-foreground: 0 0% 5%;
-    --destructive: 0 85% 55%;
-    --destructive-foreground: 60 30% 96%;
-    --border: 0 0% 5%;
-    --input: 0 0% 5%;
-    --ring: 0 0% 5%;
-    --chart-1: 0 85% 55%;
-    --chart-2: 150 80% 45%;
-    --chart-3: 45 100% 60%;
-    --chart-4: 200 80% 50%;
-    --chart-5: 280 70% 55%;
-    --radius: 0;
-    --sidebar-background: 60 30% 96%;
-    --sidebar-foreground: 0 0% 5%;
-    --sidebar-primary: 0 0% 5%;
-    --sidebar-primary-foreground: 60 30% 96%;
-    --sidebar-accent: 45 100% 60%;
-    --sidebar-accent-foreground: 0 0% 5%;
-    --sidebar-border: 0 0% 5%;
-    --sidebar-ring: 0 0% 5%;
-    --border-strong: 0 0% 5%;
+/* §14 Tailwind v4 starter */
+@theme inline {
+  --font-sans: "Geist", "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-heading: var(--font-sans);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: 1rem;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-code: var(--code);
+  --color-code-foreground: var(--code-foreground);
+  --color-code-highlight: var(--code-highlight);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-ink: var(--chart-ink);
+  --color-chart-context: var(--chart-context);
+  --color-chart-grid: var(--chart-grid);
+}
+
+/* §6 elevation and §7 motion recipes as theme utilities (shadow-*, ease-*). */
+@theme {
+  --shadow-shine: 0 1px 2px rgb(0 0 0 / 0.05), inset 0 1px 0 color-mix(in oklab, #fff 16%, transparent);
+  --shadow-edge: 0 -1px color-mix(in oklab, #fff 6%, transparent);
+  --shadow-edge-inset: 0 1px 2px rgb(0 0 0 / 0.05), inset 0 1px 0 color-mix(in oklab, #fff 6%, transparent);
+  --shadow-panel: 0 20px 50px -30px rgb(0 0 0 / 0.25);
+  --shadow-glow: 0 0 80px 8px color-mix(in srgb, var(--foreground) 7%, transparent);
+
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-glide: cubic-bezier(0.77, 0, 0.175, 1);
+
+  --animate-accordion-down: accordion-down 150ms var(--ease-standard);
+  --animate-accordion-up: accordion-up 150ms var(--ease-standard);
+
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--accordion-panel-height, auto); }
   }
-  .dark {
-    /* Neobrutalist Dark Theme */
-    --background: 220 15% 10%;
-    --foreground: 60 30% 96%;
-    --card: 220 15% 13%;
-    --card-foreground: 60 30% 96%;
-    --popover: 220 15% 13%;
-    --popover-foreground: 60 30% 96%;
-    --primary: 60 30% 96%;
-    --primary-foreground: 220 15% 10%;
-    --secondary: 45 100% 55%;
-    --secondary-foreground: 0 0% 5%;
-    --muted: 220 15% 18%;
-    --muted-foreground: 60 10% 65%;
-    --accent: 150 80% 50%;
-    --accent-foreground: 0 0% 5%;
-    --destructive: 0 85% 55%;
-    --destructive-foreground: 60 30% 96%;
-    --border: 220 15% 25%;
-    --input: 220 15% 25%;
-    --ring: 220 15% 30%;
-    --chart-1: 0 85% 60%;
-    --chart-2: 150 80% 50%;
-    --chart-3: 45 100% 60%;
-    --chart-4: 200 80% 55%;
-    --chart-5: 280 70% 60%;
-    --sidebar-background: 220 15% 10%;
-    --sidebar-foreground: 60 30% 96%;
-    --sidebar-primary: 60 30% 96%;
-    --sidebar-primary-foreground: 220 15% 10%;
-    --sidebar-accent: 45 100% 55%;
-    --sidebar-accent-foreground: 0 0% 5%;
-    --sidebar-border: 220 15% 25%;
-    --sidebar-ring: 220 15% 30%;
-    --border-strong: 220 15% 30%;
+  @keyframes accordion-up {
+    from { height: var(--accordion-panel-height, auto); }
+    to { height: 0; }
   }
+}
+
+/* §2.1 primitives (Tailwind already ships the neutral/status scale; values repeated for non-Tailwind consumers). */
+:root {
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f5f5f5;
+  --color-neutral-300: #d4d4d4;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #525252;
+  --color-neutral-700: #404040;
+  --color-neutral-800: #262626;
+  --color-neutral-950: #0a0a0a;
+
+  --color-red-400: #ff6467;
+  --color-red-500: #fb2c36;
+  --color-red-700: #c10007;
+  --color-amber-400: #ffb900;
+  --color-amber-500: #fe9a00;
+  --color-amber-700: #bb4d00;
+  --color-emerald-400: #00d492;
+  --color-emerald-500: #00bc7d;
+  --color-emerald-700: #007a55;
+  --color-blue-400: #51a2ff;
+  --color-blue-500: #2b7fff;
+  --color-blue-700: #1447e6;
+
+  --viz-blue-l: #2a78d6;
+  --viz-blue-d: #3987e5;
+  --viz-orange-l: #eb6834;
+  --viz-orange-d: #d95926;
+  --viz-aqua-l: #1baf7a;
+  --viz-aqua-d: #199e70;
+  --viz-violet-l: #4a3aa7;
+  --viz-violet-d: #9085e9;
+  --viz-magenta-l: #e87ba4;
+  --viz-magenta-d: #d55181;
+}
+
+/* §2.2 semantic tokens */
+:root {
+  color-scheme: light;
+  --radius: 0.625rem;
+
+  --background: #ffffff;
+  --foreground: var(--color-neutral-800);
+  --card: #ffffff;
+  --card-foreground: var(--color-neutral-800);
+  --popover: #ffffff;
+  --popover-foreground: var(--color-neutral-800);
+
+  --primary: var(--color-neutral-800);
+  --primary-foreground: var(--color-neutral-50);
+  --secondary: color-mix(in oklab, #000 4%, transparent);
+  --secondary-foreground: var(--color-neutral-800);
+  --muted: color-mix(in oklab, #000 4%, transparent);
+  --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, #000);
+  --subtle-foreground: color-mix(in srgb, var(--foreground) 72%, transparent);
+  --accent: color-mix(in oklab, #000 4%, transparent);
+  --accent-foreground: var(--color-neutral-800);
+
+  --border: color-mix(in oklab, #000 8%, transparent);
+  --input: color-mix(in oklab, #000 10%, transparent);
+  --ring: var(--color-neutral-400);
+
+  --destructive: var(--color-red-500);
+  --destructive-foreground: var(--color-red-700);
+  --warning: var(--color-amber-500);
+  --warning-foreground: var(--color-amber-700);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-700);
+  --info: var(--color-blue-500);
+  --info-foreground: var(--color-blue-700);
+
+  --sidebar: var(--color-neutral-50);
+  --sidebar-foreground: color-mix(in srgb, var(--color-neutral-800) 64%, var(--sidebar));
+  --sidebar-primary: var(--color-neutral-800);
+  --sidebar-primary-foreground: var(--color-neutral-50);
+  --sidebar-accent: color-mix(in oklab, #000 4%, transparent);
+  --sidebar-accent-foreground: var(--color-neutral-800);
+  --sidebar-border: color-mix(in oklab, #000 6%, transparent);
+  --sidebar-ring: var(--color-neutral-400);
+
+  --code: #ffffff;
+  --code-foreground: var(--foreground);
+  --code-highlight: color-mix(in oklab, #000 4%, transparent);
+
+  --chart-ink: var(--color-neutral-600);
+  --chart-context: var(--color-neutral-300);
+  --chart-grid: color-mix(in oklab, #000 6%, transparent);
+  --chart-1: var(--viz-blue-l);
+  --chart-2: var(--viz-orange-l);
+  --chart-3: var(--viz-aqua-l);
+  --chart-4: var(--viz-violet-l);
+  --chart-5: var(--viz-magenta-l);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: color-mix(in srgb, var(--color-neutral-950) 96%, #fff);
+  --foreground: var(--color-neutral-100);
+  --card: color-mix(in srgb, var(--background) 98%, #fff);
+  --card-foreground: var(--color-neutral-100);
+  --popover: color-mix(in srgb, var(--background) 98%, #fff);
+  --popover-foreground: var(--color-neutral-100);
+
+  --primary: var(--color-neutral-100);
+  --primary-foreground: var(--color-neutral-800);
+  --secondary: color-mix(in oklab, #fff 4%, transparent);
+  --secondary-foreground: var(--color-neutral-100);
+  --muted: color-mix(in oklab, #fff 4%, transparent);
+  --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, #fff);
+  --accent: color-mix(in oklab, #fff 4%, transparent);
+  --accent-foreground: var(--color-neutral-100);
+
+  --border: color-mix(in oklab, #fff 6%, transparent);
+  --input: color-mix(in oklab, #fff 8%, transparent);
+  --ring: var(--color-neutral-500);
+
+  --destructive: color-mix(in srgb, var(--color-red-500) 90%, #fff);
+  --destructive-foreground: var(--color-red-400);
+  --warning-foreground: var(--color-amber-400);
+  --success-foreground: var(--color-emerald-400);
+  --info-foreground: var(--color-blue-400);
+
+  --sidebar: color-mix(in srgb, var(--color-neutral-950) 97%, #fff);
+  --sidebar-foreground: color-mix(in srgb, var(--color-neutral-100) 64%, var(--sidebar));
+  --sidebar-primary: var(--color-neutral-100);
+  --sidebar-primary-foreground: var(--color-neutral-800);
+  --sidebar-accent: color-mix(in oklab, #fff 4%, transparent);
+  --sidebar-accent-foreground: var(--color-neutral-100);
+  --sidebar-border: color-mix(in oklab, #fff 5%, transparent);
+  --sidebar-ring: var(--color-neutral-400);
+
+  --code: color-mix(in srgb, var(--background) 98%, #fff);
+  --code-highlight: color-mix(in oklab, #fff 4%, transparent);
+
+  --chart-ink: var(--color-neutral-400);
+  --chart-context: var(--color-neutral-700);
+  --chart-grid: color-mix(in oklab, #fff 6%, transparent);
+  --chart-1: var(--viz-blue-d);
+  --chart-2: var(--viz-orange-d);
+  --chart-3: var(--viz-aqua-d);
+  --chart-4: var(--viz-violet-d);
+  --chart-5: var(--viz-magenta-d);
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply antialiased;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-heading text-balance;
+  }
+  p {
+    text-wrap: pretty;
   }
 }
 
-@layer components {
-  /* Neobrutalist shadow utility */
-  .neo-shadow {
-    box-shadow: 4px 4px 0 0 hsl(var(--foreground));
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
-  .dark .neo-shadow {
-    box-shadow: 4px 4px 0 0 hsl(var(--border-strong));
-  }
-  .neo-shadow-sm {
-    box-shadow: 2px 2px 0 0 hsl(var(--foreground));
-  }
-  .dark .neo-shadow-sm {
-    box-shadow: 2px 2px 0 0 hsl(var(--border-strong));
-  }
-  .neo-shadow-lg {
-    box-shadow: 6px 6px 0 0 hsl(var(--foreground));
-  }
-  .dark .neo-shadow-lg {
-    box-shadow: 6px 6px 0 0 hsl(var(--border-strong));
-  }
-  .neo-shadow-accent {
-    box-shadow: 4px 4px 0 0 hsl(var(--accent));
-  }
-  .neo-shadow-secondary {
-    box-shadow: 4px 4px 0 0 hsl(var(--secondary));
-  }
+}
 
-  /* Neobrutalist button - ensures proper hover contrast */
-  .neo-btn {
-    @apply border-2 border-foreground font-bold uppercase transition-all rounded-none;
-    box-shadow: 2px 2px 0 0 hsl(var(--foreground));
-  }
-  .dark .neo-btn {
-    border-color: hsl(var(--border-strong));
-    box-shadow: 2px 2px 0 0 hsl(var(--border-strong));
-  }
-  .neo-btn:hover {
-    @apply translate-x-0.5 translate-y-0.5;
-    box-shadow: none;
-  }
-  .neo-btn:disabled {
-    @apply opacity-40 cursor-not-allowed translate-x-0 translate-y-0;
-  }
-  .neo-btn-accent {
-    @apply neo-btn;
-    background-color: hsl(150 80% 45%) !important;
-    color: hsl(0 0% 5%) !important;
-  }
-  .neo-btn-accent:hover {
-    background-color: hsl(150 80% 40%) !important;
-    color: hsl(0 0% 5%) !important;
-  }
-  .neo-btn-secondary {
-    @apply neo-btn;
-    background-color: hsl(45 100% 60%) !important;
-    color: hsl(0 0% 5%) !important;
-  }
-  .neo-btn-secondary:hover {
-    background-color: hsl(45 100% 55%) !important;
-    color: hsl(0 0% 5%) !important;
-  }
-  .neo-btn-outline {
-    @apply neo-btn;
-    background-color: hsl(var(--background)) !important;
-    color: hsl(var(--foreground)) !important;
-  }
-  .neo-btn-outline:hover {
-    background-color: hsl(var(--muted)) !important;
-    color: hsl(var(--foreground)) !important;
-  }
+/* Applied by the theme provider for one frame while switching themes. */
+.theme-switching,
+.theme-switching * {
+  transition: none !important;
 }

@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState } from 'react';
 import {
   FileJson,
@@ -44,7 +42,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { useEditorStore, type TabType } from '@/lib/openapi/store';
+import { useEditorStore } from '@/lib/openapi/store';
+import { createRoute, createSchema } from '@/lib/openapi/types';
+
+type TabType = ReturnType<typeof useEditorStore.getState>['activeTab'];
 import { RouteEditor } from './route-editor';
 import { SchemaEditor } from './schema-builder';
 import { SettingsPanel } from './settings-panel';
@@ -112,14 +113,16 @@ export function TabletEditor({ isSaving, lastSaved, saveError }: TabletEditorPro
   };
 
   const handleAddRoute = () => {
-    const id = addRoute();
-    selectRoute(id);
+    const route = createRoute('/new-route', 'get');
+    addRoute(route);
+    selectRoute(route.id);
     setLeftSheetOpen(false);
   };
 
   const handleAddSchema = () => {
-    const id = addSchema();
-    selectSchema(id);
+    const schema = createSchema('object', `Schema${document.schemas.size + 1}`);
+    addSchema(schema);
+    selectSchema(schema.id);
     setLeftSheetOpen(false);
   };
 
@@ -154,7 +157,7 @@ export function TabletEditor({ isSaving, lastSaved, saveError }: TabletEditorPro
               variant="ghost"
               size="sm"
               onClick={() => setLeftSheetOpen(true)}
-              className="neo-btn h-8 px-2"
+              className="h-8 px-2"
             >
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
@@ -184,30 +187,28 @@ export function TabletEditor({ isSaving, lastSaved, saveError }: TabletEditorPro
           </div>
           <div className="flex items-center gap-2">
             <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
+              <TooltipTrigger
+                render={<Button
                   variant="ghost"
                   size="sm"
                   onClick={undo}
                   disabled={!canUndo}
-                  className="neo-btn h-8 w-8 p-0"
-                >
-                  <Undo2 className="h-4 w-4" />
-                </Button>
+                  className="h-8 w-8 p-0" />}
+              >
+                <Undo2 className="h-4 w-4" />
               </TooltipTrigger>
               <TooltipContent>Undo</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
+              <TooltipTrigger
+                render={<Button
                   variant="ghost"
                   size="sm"
                   onClick={redo}
                   disabled={!canRedo}
-                  className="neo-btn h-8 w-8 p-0"
-                >
-                  <Redo2 className="h-4 w-4" />
-                </Button>
+                  className="h-8 w-8 p-0" />}
+              >
+                <Redo2 className="h-4 w-4" />
               </TooltipTrigger>
               <TooltipContent>Redo</TooltipContent>
             </Tooltip>
@@ -216,7 +217,7 @@ export function TabletEditor({ isSaving, lastSaved, saveError }: TabletEditorPro
               variant="ghost"
               size="sm"
               onClick={() => setImportOpen(true)}
-              className="neo-btn h-8 px-3"
+              className="h-8 px-3"
             >
               <Upload className="mr-1 h-4 w-4" />
               Import
@@ -225,7 +226,7 @@ export function TabletEditor({ isSaving, lastSaved, saveError }: TabletEditorPro
               variant="ghost"
               size="sm"
               onClick={handleExport}
-              className="neo-btn h-8 px-3"
+              className="h-8 px-3"
             >
               <Download className="mr-1 h-4 w-4" />
               Export
@@ -234,7 +235,7 @@ export function TabletEditor({ isSaving, lastSaved, saveError }: TabletEditorPro
               variant="ghost"
               size="sm"
               onClick={() => setYamlSheetOpen(true)}
-              className="neo-btn h-8 px-3"
+              className="h-8 px-3"
             >
               <Code className="mr-1 h-4 w-4" />
               YAML
@@ -261,7 +262,7 @@ export function TabletEditor({ isSaving, lastSaved, saveError }: TabletEditorPro
                     ? 'Select a route from the sidebar or create a new one' 
                     : 'Select a schema from the sidebar or create a new one'}
                 </p>
-                <Button onClick={() => setLeftSheetOpen(true)} className="neo-btn">
+                <Button onClick={() => setLeftSheetOpen(true)}>
                   <PanelLeftOpen className="mr-2 h-4 w-4" />
                   Open Sidebar
                 </Button>
@@ -303,7 +304,7 @@ export function TabletEditor({ isSaving, lastSaved, saveError }: TabletEditorPro
                   <div className="p-2 space-y-2">
                     <Button
                       onClick={handleAddRoute}
-                      className="w-full neo-btn justify-start"
+                      className="w-full justify-start"
                       size="sm"
                     >
                       <Plus className="mr-2 h-4 w-4" />
@@ -347,7 +348,7 @@ export function TabletEditor({ isSaving, lastSaved, saveError }: TabletEditorPro
                   <div className="p-2 space-y-2">
                     <Button
                       onClick={handleAddSchema}
-                      className="w-full neo-btn justify-start"
+                      className="w-full justify-start"
                       size="sm"
                     >
                       <Plus className="mr-2 h-4 w-4" />

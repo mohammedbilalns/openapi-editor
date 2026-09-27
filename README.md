@@ -1,6 +1,6 @@
 # OpenAPI Editor
 
-A modern, neo-brutalist, web-based WYSIWYG editor for authoring API documentations and schemas, remaining fully compatible with the **OpenAPI 3.0 specification**.
+A modern, web-based WYSIWYG editor for authoring API documentations and schemas, remaining fully compatible with the **OpenAPI 3.0 specification**.
 
 **Yet another OpenAPI Editor?**
 
@@ -25,8 +25,8 @@ A modern, neo-brutalist, web-based WYSIWYG editor for authoring API documentatio
 
 ### Prerequisites
 
-- Node.js 18+ or Bun
-- pnpm (recommended) or npm
+- Node.js 22+
+- pnpm 10 (`corepack enable` picks up the version pinned in `package.json`)
 
 ### Installation
 
@@ -47,12 +47,26 @@ Open [`http://localhost:3000`](http://localhost:3000) in your browser.
 ### Building for Production
 
 ```bash
-# Build the application
+# Type-check, lint and run unit tests
+pnpm typecheck && pnpm lint && pnpm test
+
+# Build the static SPA
 pnpm build
 
-# Start the production server
-pnpm start
+# Serve the production build locally (http://localhost:4173)
+pnpm preview
 ```
+
+The app is built with TanStack Start in SPA mode. `pnpm build` writes a fully static site to **`dist/client/`** (the prerendered app shell is `dist/client/index.html`; `dist/server/` is only used by `pnpm preview` and can be ignored). Deploy `dist/client/` to any static host and configure an SPA fallback so unknown paths serve `/index.html` (e.g. Netlify `/* /index.html 200`, Cloudflare Pages / Vercel rewrites).
+
+### Testing
+
+```bash
+pnpm test        # unit and component tests (Vitest + Testing Library, jsdom)
+pnpm test:e2e    # end-to-end tests (Playwright, runs against `pnpm build && pnpm preview`)
+```
+
+Run `pnpm exec playwright install chromium` once before the first e2e run.
 
 ### PWA Installation
 
@@ -63,7 +77,7 @@ The OpenAPI Editor can be installed as a Progressive Web App (PWA) for offline u
 3. Click "Install" to add the app to your device
 4. The app will work completely offline after the first visit
 
-**Note:** When offline, the "From URL" import feature is automatically disabled since it requires a server-side proxy to bypass CORS restrictions. You can still use "Paste YAML" and "Upload File" options while offline.
+**Note:** "From URL" fetches the document directly from your browser, so the server must allow cross-origin requests (CORS). If it doesn't, download the file and use "Upload File" instead. The URL import is disabled while offline; "Paste YAML" and "Upload File" keep working.
 
 
 ## Contributing

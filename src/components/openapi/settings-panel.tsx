@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import { Plus, Trash2, Server, Shield, Tag, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -108,7 +106,7 @@ export function SettingsPanel() {
   return (
     <ScrollArea className="h-full">
       <div ref={containerRef} className={`space-y-6 overflow-x-hidden ${isMobile ? 'p-4' : 'p-6'}`}>
-        <Accordion type="multiple" defaultValue={['info', 'servers', 'security', 'tags']}>
+        <Accordion multiple defaultValue={['info', 'servers', 'security', 'tags']}>
           {/* API Info Section */}
           <AccordionItem value="info" className="border-2 border-foreground">
             <AccordionTrigger className="px-4 font-bold uppercase hover:bg-muted hover:no-underline">
@@ -279,11 +277,11 @@ export function SettingsPanel() {
                 )}
 
                 <Dialog open={newServerDialogOpen} onOpenChange={setNewServerDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size={isMobile ? 'lg' : 'sm'} className={`w-full bg-transparent ${isMobile ? 'h-14 text-base' : ''}`}>
-                      <Plus className={isMobile ? 'mr-2 h-5 w-5' : 'mr-1 h-4 w-4'} />
-                      Add Server
-                    </Button>
+                  <DialogTrigger
+                    render={<Button variant="outline" size={isMobile ? 'lg' : 'sm'} className={`w-full bg-transparent ${isMobile ? 'h-14 text-base' : ''}`} />}
+                  >
+                    <Plus className={isMobile ? 'mr-2 h-5 w-5' : 'mr-1 h-4 w-4'} />
+                    Add Server
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
@@ -418,11 +416,11 @@ export function SettingsPanel() {
                 )}
 
                 <Dialog open={newSecurityDialogOpen} onOpenChange={setNewSecurityDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size={isMobile ? 'lg' : 'sm'} className={`w-full bg-transparent ${isMobile ? 'h-14 text-base' : ''}`}>
-                      <Plus className={isMobile ? 'mr-2 h-5 w-5' : 'mr-1 h-4 w-4'} />
-                      Add Security Scheme
-                    </Button>
+                  <DialogTrigger
+                    render={<Button variant="outline" size={isMobile ? 'lg' : 'sm'} className={`w-full bg-transparent ${isMobile ? 'h-14 text-base' : ''}`} />}
+                  >
+                    <Plus className={isMobile ? 'mr-2 h-5 w-5' : 'mr-1 h-4 w-4'} />
+                    Add Security Scheme
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
@@ -525,11 +523,11 @@ export function SettingsPanel() {
                 )}
 
                 <Dialog open={newTagDialogOpen} onOpenChange={setNewTagDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size={isMobile ? 'lg' : 'sm'} className={`w-full bg-transparent ${isMobile ? 'h-14 text-base' : ''}`}>
-                      <Plus className={isMobile ? 'mr-2 h-5 w-5' : 'mr-1 h-4 w-4'} />
-                      Add Tag
-                    </Button>
+                  <DialogTrigger
+                    render={<Button variant="outline" size={isMobile ? 'lg' : 'sm'} className={`w-full bg-transparent ${isMobile ? 'h-14 text-base' : ''}`} />}
+                  >
+                    <Plus className={isMobile ? 'mr-2 h-5 w-5' : 'mr-1 h-4 w-4'} />
+                    Add Tag
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>

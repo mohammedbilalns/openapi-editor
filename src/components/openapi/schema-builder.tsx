@@ -1,5 +1,3 @@
-'use client';
-
 import React from "react"
 
 import { useState } from 'react';
@@ -108,11 +106,11 @@ export function SchemaList({ onSelect }: SchemaListProps) {
       <div className="flex items-center justify-between border-b-4 border-foreground p-4">
         <h2 className="text-lg font-bold uppercase tracking-tight text-foreground">Schemas</h2>
         <Dialog open={newSchemaDialogOpen} onOpenChange={setNewSchemaDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="neo-btn-accent">
-              <Plus className="mr-1 h-4 w-4" />
-              New
-            </Button>
+          <DialogTrigger
+            render={<Button  />}
+          >
+            <Plus className="mr-1 h-4 w-4" />
+            New
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -177,7 +175,7 @@ export function SchemaList({ onSelect }: SchemaListProps) {
                   key={schema.id}
                   className={cn(
                     'group flex cursor-pointer items-center justify-between border-2 border-transparent px-3 py-3 transition-all hover:border-foreground hover:bg-muted',
-                    selectedSchemaId === schema.id && 'border-foreground bg-secondary neo-shadow-sm'
+                    selectedSchemaId === schema.id && 'border-foreground bg-secondary'
                   )}
                   onClick={() => {
                     selectSchema(schema.id);
@@ -302,7 +300,7 @@ export function SchemaEditor({ schemaId }: SchemaEditorProps) {
     <div className="flex h-full flex-col">
       <div className="border-b-4 border-foreground p-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center border-2 border-foreground bg-secondary neo-shadow-sm">
+          <div className="flex h-12 w-12 items-center justify-center border-2 border-foreground bg-secondary">
             <SchemaTypeIcon type={schema.type} />
           </div>
           <Input
@@ -477,7 +475,7 @@ function ObjectSchemaEditor({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold uppercase tracking-tight text-foreground">Fields</h3>
-        <Button onClick={onAddFieldClick} className="neo-btn-accent">
+        <Button onClick={onAddFieldClick}>
           <Plus className="mr-1 h-4 w-4" />
           Add Field
         </Button>
@@ -525,7 +523,7 @@ function FieldRow({ field, allSchemas, onUpdate, onDelete }: FieldRowProps) {
   const isRef = field.schema.kind === 'ref';
 
   return (
-    <div className="group flex items-center gap-3 border-2 border-foreground bg-card p-3 neo-shadow-sm">
+    <div className="group flex items-center gap-3 border-2 border-foreground bg-card p-3">
       <GripVertical className="h-4 w-4 cursor-move text-muted-foreground" />
       <Input
         value={field.name}

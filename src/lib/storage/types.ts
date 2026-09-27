@@ -1,4 +1,4 @@
-import type { ApiDocument } from "@/lib/openapi/types";
+import type { ApiDocument, SecurityScheme } from "@/lib/openapi/types";
 
 /**
  * Metadata for a stored project
@@ -38,7 +38,7 @@ export interface SerializedApiDocument {
   servers: ApiDocument["servers"];
   routes: [string, SerializedRoute][];
   schemas: [string, SerializedSchema][];
-  securitySchemes: [string, unknown][];
+  securitySchemes: [string, SecurityScheme][];
   tags: ApiDocument["tags"];
 }
 

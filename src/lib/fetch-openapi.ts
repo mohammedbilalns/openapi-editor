@@ -1,37 +1,60 @@
-'use server';
+export interface FetchOpenApiResult {
+  content?: string
+  error?: string
+}
 
-export async function fetchOpenApiFromUrl(url: string): Promise<{ content?: string; error?: string }> {
+const ACCEPT =
+  'application/yaml, application/x-yaml, text/yaml, text/x-yaml, application/json, text/plain, */*'
+
+const CORS_HINT =
+  'The server may not allow cross-origin requests (CORS). Download the file and use the Upload tab instead.'
+
+/**
+ * Fetches an OpenAPI document directly from the browser.
+ *
+ * There is no server-side proxy: the target must allow cross-origin requests.
+ * When it doesn't, the browser reports a generic network error, so the message
+ * points the user to the Upload tab instead.
+ */
+export async function fetchOpenApiFromUrl(
+  url: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<FetchOpenApiResult> {
+  let parsedUrl: URL
   try {
-    // Validate URL
-    const parsedUrl = new URL(url);
-    
-    // Only allow http and https protocols
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return { error: 'Invalid URL protocol. Only HTTP and HTTPS are allowed.' };
-    }
-
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/yaml, application/x-yaml, text/yaml, text/x-yaml, application/json, text/plain, */*',
-        'User-Agent': 'OpenAPI-Editor/1.0',
-      },
-    });
-
-    if (!response.ok) {
-      return { error: `Failed to fetch: ${response.status} ${response.statusText}` };
-    }
-
-    const content = await response.text();
-    
-    if (!content.trim()) {
-      return { error: 'The URL returned empty content.' };
-    }
-
-    return { content };
-  } catch (error) {
-    if (error instanceof TypeError && error.message.includes('URL')) {
-      return { error: 'Invalid URL format.' };
-    }
-    return { error: error instanceof Error ? error.message : 'Failed to fetch URL' };
+    parsedUrl = new URL(url.trim())
+  } catch {
+    return { error: 'Invalid URL format.' }
   }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    return { error: 'Invalid URL protocol. Only HTTP and HTTPS are allowed.' }
+  }
+
+  let response: Response
+  try {
+    response = await fetch(parsedUrl, {
+      headers: { Accept: ACCEPT },
+      mode: 'cors',
+      credentials: 'omit',
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { error: 'The request was cancelled.' }
+    }
+    return { error: `Couldn't fetch ${parsedUrl.host}. ${CORS_HINT}` }
+  }
+
+  if (!response.ok) {
+    const status = `${response.status} ${response.statusText}`.trim()
+    return { error: `Failed to fetch: ${status}.` }
+  }
+
+  const content = await response.text()
+  if (!content.trim()) {
+    return { error: 'The URL returned empty content.' }
+  }
+
+  return { content }
 }

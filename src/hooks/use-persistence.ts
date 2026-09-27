@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useCallback, useState } from "react";
 import { getRepository, type StoredProject, type ProjectMetadata } from "@/lib/storage";
 import type { ApiDocument } from "@/lib/openapi/types";
@@ -46,7 +44,7 @@ export function usePersistence(
   const [projectMetadata, setProjectMetadata] = useState<ProjectMetadata | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const documentRef = useRef(document);
   const metadataRef = useRef(projectMetadata);
   const initialLoadDoneRef = useRef(false);

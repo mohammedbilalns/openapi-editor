@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useEffect } from "react"
 
 import { useState } from 'react';
@@ -111,7 +109,7 @@ export function OpenApiEditor() {
         <header className="flex h-16 items-center justify-between border-b-4 border-foreground px-6">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center border-2 border-foreground bg-secondary neo-shadow-sm">
+              <div className="flex h-10 w-10 items-center justify-center border-2 border-foreground bg-secondary">
                 <FileJson className="h-5 w-5 text-foreground" />
               </div>
               <span className="text-xl font-bold uppercase tracking-tight text-foreground">OpenAPI Editor</span>
@@ -143,31 +141,29 @@ export function OpenApiEditor() {
 
           <div className="flex items-center gap-3">
             <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
+              <TooltipTrigger
+                render={<Button
                   variant="outline"
                   size="icon"
                   onClick={undo}
                   disabled={!canUndo()}
-                  className="border-2 border-foreground bg-background hover:bg-muted hover:neo-shadow-sm disabled:opacity-40"
-                >
-                  <Undo2 className="h-4 w-4" />
-                </Button>
+                  className="border-2 border-foreground bg-background hover:bg-muted disabled:opacity-40" />}
+              >
+                <Undo2 className="h-4 w-4" />
               </TooltipTrigger>
               <TooltipContent>Undo</TooltipContent>
             </Tooltip>
 
             <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
+              <TooltipTrigger
+                render={<Button
                   variant="outline"
                   size="icon"
                   onClick={redo}
                   disabled={!canRedo()}
-                  className="border-2 border-foreground bg-background hover:bg-muted hover:neo-shadow-sm disabled:opacity-40"
-                >
-                  <Redo2 className="h-4 w-4" />
-                </Button>
+                  className="border-2 border-foreground bg-background hover:bg-muted disabled:opacity-40" />}
+              >
+                <Redo2 className="h-4 w-4" />
               </TooltipTrigger>
               <TooltipContent>Redo</TooltipContent>
             </Tooltip>
@@ -176,7 +172,7 @@ export function OpenApiEditor() {
 
             <ImportDialog
               trigger={
-                <Button className="neo-btn-secondary">
+                <Button>
                   <Upload className="mr-2 h-4 w-4" />
                   Import
                 </Button>
@@ -184,19 +180,18 @@ export function OpenApiEditor() {
             />
 
             <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
+              <TooltipTrigger
+                render={<Button
                   className={cn(
                     "border-2 border-foreground font-bold uppercase transition-all",
                     showYaml 
-                      ? "bg-accent text-foreground neo-shadow-sm" 
+                      ? "bg-accent text-foreground" 
                       : "bg-background text-foreground hover:bg-muted"
                   )}
-                  onClick={() => setShowYaml(!showYaml)}
-                >
-                  <Code className="mr-2 h-4 w-4" />
-                  YAML
-                </Button>
+                  onClick={() => setShowYaml(!showYaml)} />}
+              >
+                <Code className="mr-2 h-4 w-4" />
+                YAML
               </TooltipTrigger>
               <TooltipContent>Toggle YAML Preview</TooltipContent>
             </Tooltip>
@@ -209,9 +204,9 @@ export function OpenApiEditor() {
 
         {/* Main Content */}
         <div className="flex-1 overflow-hidden">
-          <ResizablePanelGroup direction="horizontal">
+          <ResizablePanelGroup orientation="horizontal">
             {/* Left Sidebar - Navigation */}
-            <ResizablePanel defaultSize={25} minSize={20} maxSize={35} className="overflow-hidden">
+            <ResizablePanel id="sidebar" defaultSize="25%" minSize="20%" maxSize="35%" className="overflow-hidden">
               <Tabs
                 value={activeTab}
                 onValueChange={(v) => setActiveTab(v as 'routes' | 'schemas' | 'settings')}
@@ -221,21 +216,21 @@ export function OpenApiEditor() {
                   <TabsList className="grid w-full grid-cols-3 gap-1 bg-transparent p-0">
                     <TabsTrigger 
                       value="routes" 
-                      className="gap-2 border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary data-[state=active]:neo-shadow-sm"
+                      className="gap-2 border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary"
                     >
                       <RouteIcon className="h-4 w-4" />
                       <span className="hidden sm:inline">Routes</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="schemas" 
-                      className="gap-2 border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary data-[state=active]:neo-shadow-sm"
+                      className="gap-2 border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary"
                     >
                       <Box className="h-4 w-4" />
                       <span className="hidden sm:inline">Schemas</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="settings" 
-                      className="gap-2 border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary data-[state=active]:neo-shadow-sm"
+                      className="gap-2 border-2 border-transparent bg-transparent font-bold uppercase data-[state=active]:border-foreground data-[state=active]:bg-secondary"
                     >
                       <Settings className="h-4 w-4" />
                       <span className="hidden sm:inline">Settings</span>
@@ -260,7 +255,7 @@ export function OpenApiEditor() {
             <ResizableHandle withHandle />
 
             {/* Center Panel - Editor */}
-            <ResizablePanel defaultSize={showYaml ? 45 : 75} minSize={30}>
+            <ResizablePanel id="editor" defaultSize={showYaml ? "45%" : "75%"} minSize="30%">
               <div className="h-full overflow-hidden">
                 {activeTab === 'routes' && selectedRouteId && (
                   <RouteEditor routeId={selectedRouteId} />
@@ -290,7 +285,7 @@ export function OpenApiEditor() {
             {showYaml && (
               <>
                 <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={30} minSize={20}>
+                <ResizablePanel id="yaml" defaultSize="30%" minSize="20%">
                   <YamlPreview />
                 </ResizablePanel>
               </>

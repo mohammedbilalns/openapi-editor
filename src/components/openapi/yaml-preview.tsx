@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Copy, Check, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,7 +25,7 @@ export function YamlPreview() {
   const [copied, setCopied] = useState(false);
   const [yaml, setYaml] = useState('# Loading...');
   const [isSerializing, setIsSerializing] = useState(false);
-  const serializeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const serializeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastVersionRef = useRef<number>(-1);
   
   // Debounce the version changes (300ms feels responsive but prevents thrashing)
@@ -101,7 +99,7 @@ export function YamlPreview() {
           <Button 
             variant="outline" 
             size="icon" 
-            className="h-8 w-8 border-2 border-foreground bg-background hover:bg-muted hover:neo-shadow-sm" 
+            className="h-8 w-8 border-2 border-foreground bg-background hover:bg-muted" 
             onClick={handleCopy}
           >
             {copied ? (
@@ -113,7 +111,7 @@ export function YamlPreview() {
           <Button 
             variant="outline" 
             size="icon" 
-            className="h-8 w-8 border-2 border-foreground bg-background hover:bg-muted hover:neo-shadow-sm" 
+            className="h-8 w-8 border-2 border-foreground bg-background hover:bg-muted" 
             onClick={handleDownload}
           >
             <Download className="h-4 w-4" />

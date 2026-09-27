@@ -1,24 +1,13 @@
-'use client';
+import { useEffect } from 'react'
 
-import { useEffect } from 'react';
-
+/** Registers the offline service worker (production builds only). */
 export function ServiceWorkerRegistration() {
   useEffect(() => {
-    if (
-      typeof window !== 'undefined' &&
-      'serviceWorker' in navigator &&
-      process.env.NODE_ENV === 'production'
-    ) {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then((registration) => {
-          console.log('Service Worker registered with scope:', registration.scope);
-        })
-        .catch((error) => {
-          console.error('Service Worker registration failed:', error);
-        });
-    }
-  }, []);
+    if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return
+    navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
+      console.error('Service worker registration failed:', error)
+    })
+  }, [])
 
-  return null;
+  return null
 }

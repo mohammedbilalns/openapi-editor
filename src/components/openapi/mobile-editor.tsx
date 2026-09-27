@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState } from 'react';
 import {
   Route as RouteIcon,
@@ -17,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useEditorStore } from '@/lib/openapi/store';
+import { createRoute, createSchema } from '@/lib/openapi/types';
 import { RouteEditor } from './route-editor';
 import { SchemaEditor } from './schema-builder';
 import { SettingsPanel } from './settings-panel';
@@ -79,13 +78,15 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
   const schemas = Array.from(document.schemas.values());
 
   const handleAddRoute = () => {
-    const id = addRoute();
-    setSelectedRouteId(id);
+    const route = createRoute('/new-route', 'get');
+    addRoute(route);
+    setSelectedRouteId(route.id);
   };
 
   const handleAddSchema = () => {
-    const id = addSchema();
-    setSelectedSchemaId(id);
+    const schema = createSchema('object', `Schema${document.schemas.size + 1}`);
+    addSchema(schema);
+    setSelectedSchemaId(schema.id);
   };
 
   const handleDeleteRoute = (id: string) => {
@@ -117,7 +118,7 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
             variant="ghost"
             size="sm"
             onClick={() => setSelectedRouteId(null)}
-            className="neo-btn h-8 px-2"
+            className="h-8 px-2"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -143,7 +144,7 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
             variant="ghost"
             size="sm"
             onClick={() => setSelectedSchemaId(null)}
-            className="neo-btn h-8 px-2"
+            className="h-8 px-2"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -181,10 +182,10 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
           </div>
           {/* YAML Preview */}
           <Sheet open={yamlOpen} onOpenChange={setYamlOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="sm" className="neo-btn h-8 px-2">
-                <Code className="h-4 w-4" />
-              </Button>
+            <SheetTrigger
+              render={<Button variant="ghost" size="sm" className="h-8 px-2" />}
+            >
+              <Code className="h-4 w-4" />
             </SheetTrigger>
             <SheetContent side="bottom" className="h-[80vh] p-0">
               <SheetHeader className="border-b-2 border-foreground px-4 py-3">
@@ -205,7 +206,7 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between border-b border-border p-3">
               <span className="font-semibold">Routes ({routes.length})</span>
-              <Button size="sm" onClick={handleAddRoute} className="neo-btn h-8">
+              <Button size="sm" onClick={handleAddRoute} className="h-8">
                 <Plus className="mr-1 h-4 w-4" />
                 Add
               </Button>
@@ -216,7 +217,7 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <RouteIcon className="h-12 w-12 text-muted-foreground/50 mb-4" />
                     <p className="text-sm text-muted-foreground">No routes yet</p>
-                    <Button size="sm" onClick={handleAddRoute} className="neo-btn mt-4">
+                    <Button size="sm" onClick={handleAddRoute} className="mt-4">
                       <Plus className="mr-1 h-4 w-4" />
                       Add Route
                     </Button>
@@ -225,7 +226,7 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
                   routes.map((route) => (
                     <div
                       key={route.id}
-                      className="flex items-center gap-2 rounded-none border-2 border-foreground p-3 neo-shadow-sm bg-card"
+                      className="flex items-center gap-2 rounded-none border-2 border-foreground p-3 bg-card"
                     >
                       <button
                         className="flex flex-1 items-center gap-2 text-left"
@@ -256,7 +257,7 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between border-b border-border p-3">
               <span className="font-semibold">Schemas ({schemas.length})</span>
-              <Button size="sm" onClick={handleAddSchema} className="neo-btn h-8">
+              <Button size="sm" onClick={handleAddSchema} className="h-8">
                 <Plus className="mr-1 h-4 w-4" />
                 Add
               </Button>
@@ -267,7 +268,7 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Box className="h-12 w-12 text-muted-foreground/50 mb-4" />
                     <p className="text-sm text-muted-foreground">No schemas yet</p>
-                    <Button size="sm" onClick={handleAddSchema} className="neo-btn mt-4">
+                    <Button size="sm" onClick={handleAddSchema} className="mt-4">
                       <Plus className="mr-1 h-4 w-4" />
                       Add Schema
                     </Button>
@@ -276,7 +277,7 @@ export function MobileEditor({ isSaving, lastSaved, saveError }: MobileEditorPro
                   schemas.map((schema) => (
                     <div
                       key={schema.id}
-                      className="flex items-center gap-2 rounded-none border-2 border-foreground p-3 neo-shadow-sm bg-card"
+                      className="flex items-center gap-2 rounded-none border-2 border-foreground p-3 bg-card"
                     >
                       <button
                         className="flex flex-1 items-center gap-2 text-left"
