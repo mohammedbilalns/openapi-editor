@@ -33,7 +33,7 @@ interface EditorState {
   selectedSchemaId: NodeId | null;
   selectedRouteId: NodeId | null;
   
-  // History for undo/redo
+  // History for undo/redo: every document state, history[historyIndex] === document
   history: ApiDocument[];
   historyIndex: number;
   maxHistorySize: number;
@@ -127,14 +127,17 @@ function cloneDocument(doc: ApiDocument): ApiDocument {
   };
 }
 
+const initialDocument = createEmptyDocument();
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   // Initial state
-  document: createEmptyDocument(),
+  document: initialDocument,
   documentVersion: 0,
   selectedSchemaId: null,
   selectedRouteId: null,
-  history: [],
-  historyIndex: -1,
+  // history[historyIndex] is always the current document
+  history: [initialDocument],
+  historyIndex: 0,
   maxHistorySize: 50,
   commandLog: [],
   activeTab: 'routes',
@@ -143,7 +146,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // Document actions
   setDocument: (doc) => {
     const state = get();
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), doc];
     if (newHistory.length > state.maxHistorySize) {
       newHistory.shift();
     }
@@ -161,7 +164,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.info = { ...newDoc.info, ...info };
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -177,7 +180,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.schemas.set(schema.id, schema);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -203,7 +206,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     
     newDoc.schemas.set(id, updatedSchema);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -218,7 +221,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.schemas.delete(id);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -251,7 +254,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
     }
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -303,7 +306,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
     }
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -329,7 +332,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
     }
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -345,7 +348,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.routes.set(route.id, route);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -364,7 +367,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.routes.set(id, { ...route, ...updates });
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -379,7 +382,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.routes.delete(id);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -399,7 +402,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const updatedRoute = newDoc.routes.get(routeId)!;
     updatedRoute.parameters = [...updatedRoute.parameters, param];
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -420,7 +423,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       p.id === paramId ? { ...p, ...updates } : p
     );
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -439,7 +442,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const updatedRoute = newDoc.routes.get(routeId)!;
     updatedRoute.parameters = updatedRoute.parameters.filter(p => p.id !== paramId);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -458,7 +461,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const updatedRoute = newDoc.routes.get(routeId)!;
     updatedRoute.requestBody = body;
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -477,7 +480,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const updatedRoute = newDoc.routes.get(routeId)!;
     updatedRoute.responses.set(statusCode, response);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -499,7 +502,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const updatedRoute = newDoc.routes.get(routeId)!;
     updatedRoute.responses.set(statusCode, { ...response, ...updates });
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -518,7 +521,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const updatedRoute = newDoc.routes.get(routeId)!;
     updatedRoute.responses.delete(statusCode);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -534,7 +537,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.servers.push(server);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -549,7 +552,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.servers[index] = server;
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -564,7 +567,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.servers.splice(index, 1);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -580,7 +583,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.securitySchemes.set(scheme.id, scheme);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -598,7 +601,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.securitySchemes.set(id, { ...scheme, ...updates });
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -613,7 +616,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.securitySchemes.delete(id);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -631,7 +634,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       newDoc.tags.push(tag);
     }
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -646,7 +649,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newDoc = cloneDocument(state.document);
     newDoc.tags = newDoc.tags.filter(t => t.name !== name);
     
-    const newHistory = [...state.history.slice(0, state.historyIndex + 1), cloneDocument(state.document)];
+    const newHistory = [...state.history.slice(0, state.historyIndex + 1), newDoc];
     set({
       document: newDoc,
       history: newHistory,
@@ -665,11 +668,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // History actions
   undo: () => {
     const state = get();
-    if (state.historyIndex < 0) return;
-    
-    const previousDoc = state.history[state.historyIndex];
+    if (state.historyIndex <= 0) return;
+
     set({
-      document: previousDoc,
+      document: state.history[state.historyIndex - 1],
       historyIndex: state.historyIndex - 1,
       documentVersion: state.documentVersion + 1,
     });
@@ -678,18 +680,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   redo: () => {
     const state = get();
     if (state.historyIndex >= state.history.length - 1) return;
-    
-    const nextDoc = state.history[state.historyIndex + 2];
-    if (nextDoc) {
-      set({
-        document: nextDoc,
-        historyIndex: state.historyIndex + 1,
-        documentVersion: state.documentVersion + 1,
-      });
-    }
+
+    set({
+      document: state.history[state.historyIndex + 1],
+      historyIndex: state.historyIndex + 1,
+      documentVersion: state.documentVersion + 1,
+    });
   },
 
-  canUndo: () => get().historyIndex >= 0,
+  canUndo: () => get().historyIndex > 0,
   canRedo: () => get().historyIndex < get().history.length - 1,
 
   // Helper methods
@@ -765,8 +764,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   initializeDocument: (doc) => {
     set({
       document: doc,
-      history: [],
-      historyIndex: -1,
+      history: [doc],
+      historyIndex: 0,
       documentVersion: 0,
       selectedSchemaId: null,
       selectedRouteId: null,

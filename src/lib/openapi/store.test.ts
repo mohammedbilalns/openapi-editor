@@ -234,6 +234,31 @@ describe('editor store: undo / redo', () => {
     expect(summary()).toBe('one');
   });
 
+  it('redo returns to the most recent state after undo', () => {
+    store().updateRoute(listPets.id, { summary: 'one' });
+    store().updateRoute(listPets.id, { summary: 'two' });
+    store().undo();
+    expect(summary()).toBe('one');
+    expect(store().canRedo()).toBe(true);
+    store().redo();
+    expect(summary()).toBe('two');
+    expect(store().canRedo()).toBe(false);
+    // and the whole chain can be replayed
+    store().undo();
+    store().undo();
+    store().redo();
+    store().redo();
+    expect(summary()).toBe('two');
+  });
+
+  it('canRedo is false whenever redo would do nothing', () => {
+    expect(store().canRedo()).toBe(false);
+    store().updateRoute(listPets.id, { summary: 'one' });
+    expect(store().canRedo()).toBe(false);
+    store().undo();
+    expect(store().canRedo()).toBe(true);
+  });
+
   it('a new edit after undo discards the redo branch', () => {
     store().updateRoute(listPets.id, { summary: 'one' });
     store().updateRoute(listPets.id, { summary: 'two' });
