@@ -89,6 +89,49 @@ export interface SerializedSchema {
 }
 
 /**
+ * Storage format 2 (DB version 2): the project record holds metadata and the
+ * small document "header"; each route and schema is its own record, so an
+ * autosave only writes what changed.
+ */
+export interface ProjectRecordV2 {
+  format: 2;
+  metadata: ProjectMetadata;
+  header: {
+    id: string;
+    info: ApiDocument["info"];
+    servers: ApiDocument["servers"];
+    tags: ApiDocument["tags"];
+    security?: ApiDocument["security"];
+    securitySchemes: [string, unknown][];
+    /** document order of the route / schema records */
+    routeIds: string[];
+    schemaIds: string[];
+  };
+}
+
+export interface RouteRecord {
+  projectId: string;
+  id: string;
+  route: SerializedRoute;
+}
+
+export interface SchemaRecord {
+  projectId: string;
+  id: string;
+  schema: SerializedSchema;
+}
+
+/** What the last saveProject call wrote (for diagnostics and tests). */
+export interface SaveStats {
+  /** true when every record was rewritten (first save of a project in this session) */
+  full: boolean;
+  routesWritten: number;
+  routesDeleted: number;
+  schemasWritten: number;
+  schemasDeleted: number;
+}
+
+/**
  * Repository interface for project persistence
  * Designed to support multiple projects for future extensibility
  */

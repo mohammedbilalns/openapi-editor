@@ -58,7 +58,7 @@ function deserializeResponse(serialized: unknown): ResponseDef {
 /**
  * Serialize a Route (convert responses Map to array)
  */
-function serializeRoute(route: Route): SerializedRoute {
+export function serializeRoute(route: Route): SerializedRoute {
   return {
     id: route.id,
     path: route.path,
@@ -81,7 +81,7 @@ function serializeRoute(route: Route): SerializedRoute {
 /**
  * Deserialize a Route (convert responses array back to Map)
  */
-function deserializeRoute(serialized: SerializedRoute): Route {
+export function deserializeRoute(serialized: SerializedRoute): Route {
   return {
     id: serialized.id,
     path: serialized.path,
@@ -104,7 +104,7 @@ function deserializeRoute(serialized: SerializedRoute): Route {
  * Serialize a SchemaNode (convert properties Map to array).
  * Spreads the node so fields added to SchemaNode later are persisted too.
  */
-function serializeSchema(schema: SchemaNode): SerializedSchema {
+export function serializeSchema(schema: SchemaNode): SerializedSchema {
   return {
     ...schema,
     properties: schema.properties ? Array.from(schema.properties.entries()) : undefined,
@@ -114,7 +114,7 @@ function serializeSchema(schema: SchemaNode): SerializedSchema {
 /**
  * Deserialize a SchemaNode (convert properties array back to Map)
  */
-function deserializeSchema(serialized: SerializedSchema): SchemaNode {
+export function deserializeSchema(serialized: SerializedSchema): SchemaNode {
   return {
     ...serialized,
     type: serialized.type as SchemaNode['type'],

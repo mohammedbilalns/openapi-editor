@@ -2,6 +2,8 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { IndexedDBRepository } from './repository';
+import { serializeProject } from './serializer';
+import { useEditorStore } from '@/lib/openapi/store';
 import type { StoredProject } from './types';
 import { REALISTIC_SPEC_YAML } from '@/test/fixtures/realistic-spec';
 import { parseOk } from '@/test/helpers';
@@ -47,6 +49,98 @@ describe('IndexedDBRepository', () => {
     expect((await repo.listProjects()).map((m) => m.id)).toEqual(['new', 'mid', 'old']);
     await repo.deleteProject('mid');
     expect((await repo.listProjects()).map((m) => m.id)).toEqual(['new', 'old']);
+  });
+
+  it('after a load, saving an edited document writes only the changed records', async () => {
+    await repo.saveProject(project('a', 1));
+    const session = new IndexedDBRepository(); // e.g. after a page reload
+    const loaded = (await session.getProject('a'))!;
+
+    useEditorStore.getState().initializeDocument(loaded.document);
+    const createPet = Array.from(loaded.document.routes.values()).find((r) => r.operationId === 'createPet')!;
+    useEditorStore.getState().updateRoute(createPet.id, { summary: 'Adopt a pet' });
+    const edited = useEditorStore.getState().document;
+
+    await session.saveProject({ metadata: { ...loaded.metadata, updatedAt: 2 }, document: edited });
+    expect(session.lastSaveStats).toEqual({ full: false, routesWritten: 1, routesDeleted: 0, schemasWritten: 0, schemasDeleted: 0 });
+
+    const reloaded = (await new IndexedDBRepository().getProject('a'))!;
+    expect(reloaded.document).toEqual(edited);
+    expect(Array.from(reloaded.document.routes.keys())).toEqual(Array.from(edited.routes.keys()));
+  });
+
+  it('deletes records of removed routes and schemas', async () => {
+    const p = project('a', 1);
+    await repo.saveProject(p);
+    const [firstRouteId] = p.document.routes.keys();
+    const [firstSchemaId] = p.document.schemas.keys();
+    const routes = new Map(p.document.routes);
+    routes.delete(firstRouteId);
+    const schemas = new Map(p.document.schemas);
+    schemas.delete(firstSchemaId);
+    const next = { ...p.document, routes, schemas };
+    await repo.saveProject({ metadata: p.metadata, document: next });
+    expect(repo.lastSaveStats).toMatchObject({ full: false, routesWritten: 0, routesDeleted: 1, schemasWritten: 0, schemasDeleted: 1 });
+    expect((await new IndexedDBRepository().getProject('a'))!.document).toEqual(next);
+  });
+
+  it('a first save without a baseline replaces stale records from an earlier session', async () => {
+    const p = project('a', 1);
+    await repo.saveProject(p);
+    const routes = new Map(Array.from(p.document.routes).slice(0, 2));
+    const smaller = { ...p.document, routes };
+    const other = new IndexedDBRepository(); // never loaded 'a'
+    await other.saveProject({ metadata: p.metadata, document: smaller });
+    expect(other.lastSaveStats?.full).toBe(true);
+    expect((await new IndexedDBRepository().getProject('a'))!.document.routes.size).toBe(2);
+  });
+
+  it('deleting a project removes its route and schema records', async () => {
+    await repo.saveProject(project('a', 1));
+    await repo.saveProject(project('b', 2));
+    await repo.deleteProject('a');
+    expect(await repo.getProject('a')).toBeNull();
+    // re-creating 'a' with an empty document must not resurrect old records
+    const empty = project('a', 3);
+    empty.document = { ...empty.document, routes: new Map(), schemas: new Map() };
+    await new IndexedDBRepository().saveProject(empty);
+    const back = (await new IndexedDBRepository().getProject('a'))!;
+    expect(back.document.routes.size + back.document.schemas.size).toBe(0);
+    expect((await repo.getProject('b'))!.document.routes.size).toBeGreaterThan(0);
+  });
+
+  it('reads format-1 records written by the previous version and upgrades them on save', async () => {
+    const p = project('legacy', 5);
+    // database as the previous release created it (version 1, whole document in the project record)
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open('openapi-editor', 1);
+      open.onupgradeneeded = () => {
+        const db = open.result;
+        const store = db.createObjectStore('projects', { keyPath: 'metadata.id' });
+        store.createIndex('updatedAt', 'metadata.updatedAt', { unique: false });
+        store.createIndex('name', 'metadata.name', { unique: false });
+        db.createObjectStore('settings');
+      };
+      open.onsuccess = () => {
+        const tx = open.result.transaction('projects', 'readwrite');
+        tx.objectStore('projects').put(serializeProject(p));
+        tx.oncomplete = () => {
+          open.result.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      open.onerror = () => reject(open.error);
+    });
+
+    const upgraded = new IndexedDBRepository();
+    expect((await upgraded.listProjects()).map((m) => m.id)).toEqual(['legacy']);
+    const loaded = (await upgraded.getProject('legacy'))!;
+    expect(loaded).toEqual(p);
+
+    await upgraded.saveProject(loaded);
+    expect(upgraded.lastSaveStats?.full).toBe(true); // rewritten as format 2
+    expect((await new IndexedDBRepository().getProject('legacy'))!).toEqual(p);
   });
 
   it('stores, replaces and clears the active project id', async () => {
