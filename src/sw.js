@@ -98,7 +98,9 @@ async function handleNavigation(request) {
 
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName)
-  const cached = await cache.match(request)
+  // Module scripts request with an Origin header and servers answer "Vary: Origin",
+  // while precache requests have none; the URL alone identifies these files.
+  const cached = await cache.match(request, { ignoreVary: true })
   if (cached) return cached
   try {
     const response = await fetch(request)
@@ -111,7 +113,9 @@ async function cacheFirst(request, cacheName) {
 
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName)
-  const cached = await cache.match(request)
+  // Module scripts request with an Origin header and servers answer "Vary: Origin",
+  // while precache requests have none; the URL alone identifies these files.
+  const cached = await cache.match(request, { ignoreVary: true })
   const network = fetch(request)
     .then(async (response) => {
       if (response.ok && response.type === 'basic') await cache.put(request, response.clone())
