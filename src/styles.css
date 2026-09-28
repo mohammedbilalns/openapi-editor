@@ -310,6 +310,11 @@
   html {
     @apply antialiased;
   }
+  /* Thin scrollbars in the border tone, so scrolling panes read as hairlines (§1.3). */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent) transparent;
+  }
   body {
     @apply bg-background text-foreground font-sans;
   }

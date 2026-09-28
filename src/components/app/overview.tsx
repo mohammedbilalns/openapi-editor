@@ -178,7 +178,7 @@ function IssuesPanel({
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5 @[32rem]:flex-row @[32rem]:items-start @[32rem]:gap-2.5">
                     <span className="min-w-0 @[32rem]:flex-1">{issue.message}</span>
                     {location && (
-                      <span className="min-w-0 font-mono text-[12px] break-all text-muted-foreground @[32rem]:max-w-[40%] @[32rem]:shrink-0 @[32rem]:truncate @[32rem]:break-normal">
+                      <span className="min-w-0 font-mono text-[12px] wrap-break-word text-muted-foreground @[32rem]:max-w-[40%] @[32rem]:shrink-0 @[32rem]:truncate">
                         {location}
                       </span>
                     )}

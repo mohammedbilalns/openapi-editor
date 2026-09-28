@@ -46,7 +46,7 @@ export function AppSidebar({ onClose, className }: AppSidebarProps) {
         <DocumentSwitcher />
         <SearchTrigger />
       </div>
-      <nav aria-label="Document" ref={setScrollElement} className="min-h-0 flex-1 overflow-y-auto p-2 pt-3">
+      <nav aria-label="Document" ref={setScrollElement} className="min-h-0 flex-1 overflow-y-auto p-2 pt-3 mask-t-from-[calc(100%-12px)]">
         <SidebarTree scrollElement={scrollElement} />
       </nav>
       <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-t border-sidebar-border px-4">

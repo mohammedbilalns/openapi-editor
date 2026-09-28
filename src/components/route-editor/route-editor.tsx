@@ -56,6 +56,19 @@ export function RouteEditor({ routeId }: { routeId: NodeId }) {
 // ---------------------------------------------------------------------------
 // Header
 
+/** A camelCase operation ID in the route's own words: POST /orders/{orderId} → postOrdersByOrderId. */
+function suggestOperationId(method: string, path: string) {
+  const words = path.split('/').filter(Boolean).map((segment) => {
+    const param = /^\{(.+)\}$/.exec(segment)
+    const word = (param ? param[1] : segment).replace(/[^A-Za-z0-9]+(.)?/g, (_, next?: string) =>
+      (next ?? '').toUpperCase(),
+    )
+    const capitalized = word.charAt(0).toUpperCase() + word.slice(1)
+    return param ? `By${capitalized}` : capitalized
+  })
+  return method + words.join('')
+}
+
 function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? '' : 's'}`
 }
@@ -199,6 +212,7 @@ function RouteProperties({ routeId }: { routeId: NodeId }) {
   const tags = useRouteField(routeId, 'tags') ?? []
   const deprecated = useRouteField(routeId, 'deprecated') === true
   const operationId = useRouteField(routeId, 'operationId') ?? ''
+  const path = useRouteField(routeId, 'path') ?? ''
   const summary = useRouteField(routeId, 'summary') ?? ''
   const description = useRouteField(routeId, 'description') ?? ''
   const { updateRoute, sealHistory } = useActions()
@@ -244,7 +258,7 @@ function RouteProperties({ routeId }: { routeId: NodeId }) {
         <Input
           id={ids.operationId}
           value={operationId}
-          placeholder="getPetById"
+          placeholder={suggestOperationId(method, path)}
           spellCheck={false}
           autoComplete="off"
           className="font-mono text-[12.5px]"

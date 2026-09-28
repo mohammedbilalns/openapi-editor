@@ -100,15 +100,15 @@ function ThemeRadioItems() {
         if (isTheme(value)) setTheme(value)
       }}
     >
-      <DropdownMenuRadioItem value="light">
+      <DropdownMenuRadioItem value="light" closeOnClick>
         <Sun />
         Light
       </DropdownMenuRadioItem>
-      <DropdownMenuRadioItem value="dark">
+      <DropdownMenuRadioItem value="dark" closeOnClick>
         <Moon />
         Dark
       </DropdownMenuRadioItem>
-      <DropdownMenuRadioItem value="system">
+      <DropdownMenuRadioItem value="system" closeOnClick>
         <Monitor />
         System
       </DropdownMenuRadioItem>
