@@ -6,9 +6,8 @@ test.describe('deep links', () => {
   test('a schema that does not exist shows the missing-entity state', async ({ page }) => {
     await openApp(page, '/schemas/does-not-exist')
     const main = page.getByRole('main')
-    await expect(
-      main.getByRole('heading', { name: 'This schema is gone. It may have been deleted or replaced by an import.' }),
-    ).toBeVisible()
+    await expect(main.getByRole('heading', { name: 'This schema is gone.' })).toBeVisible()
+    await expect(main.getByText('It may have been deleted or replaced by an import.')).toBeVisible()
     await expect(main.getByRole('button', { name: 'Undo' })).toHaveCount(0)
     await main.getByRole('link', { name: 'Go to overview' }).click()
     await expect(page).toHaveURL(/\/$/)
@@ -31,9 +30,8 @@ test.describe('deep links', () => {
   for (const path of ['/nope', '/settings/bogus']) {
     test(`an unknown address (${path}) shows the 404 page`, async ({ page }) => {
       await page.goto(path)
-      await expect(
-        page.getByRole('heading', { name: 'Page not found. Check the address or go back to the overview.' }),
-      ).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Page not found.' })).toBeVisible()
+      await expect(page.getByText('Check the address or go back to the overview.')).toBeVisible()
       await page.getByRole('link', { name: 'Go to overview' }).click()
       await expect(page).toHaveURL(/\/$/)
       await waitForShell(page)

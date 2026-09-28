@@ -178,7 +178,7 @@ function FileDropZone({
           <Upload aria-hidden className="size-3.5" />
         </span>
         <span className="text-sm font-medium text-foreground">
-          {dragging ? 'Drop to load the file' : 'Drop a file here, or click to choose one'}
+          {dragging ? 'Drop to load the file' : 'Drop a file here or choose one'}
         </span>
         <span id="import-file-hint" className="text-xs text-muted-foreground">
           YAML or JSON: .yaml, .yml, .json

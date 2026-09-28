@@ -1,8 +1,6 @@
 import * as React from 'react'
-import { Link } from '@tanstack/react-router'
 import { Ellipsis, Route as RouteIcon, Trash2 } from 'lucide-react'
 import {
-  EmptyState,
   FieldRow,
   InlineTitleInput,
   IssueText,
@@ -10,7 +8,7 @@ import {
   PageHeader,
   StatusChip,
 } from '@/components/shared'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -18,7 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { showInspector } from '@/components/app/inspector-controls'
-import { METHOD_ORDER, useActions, useCanUndo } from '@/lib/openapi/selectors'
+import { MissingEntity } from '@/components/app/not-found'
+import { METHOD_ORDER, useActions } from '@/lib/openapi/selectors'
 import { useEditorStore } from '@/lib/openapi/store'
 import type { HttpMethod, NodeId, Route } from '@/lib/openapi/types'
 import { ParametersPanel } from './parameters-panel'
@@ -39,7 +38,7 @@ const contentClassName = 'mx-auto flex w-full max-w-[56rem] flex-col gap-6 px-4 
 /** `/routes/$routeId` (BLUEPRINT §3 "Route editor"). */
 export function RouteEditor({ routeId }: { routeId: NodeId }) {
   const exists = useEditorStore((s) => s.document.routes.has(routeId))
-  if (!exists) return <MissingRoute />
+  if (!exists) return <MissingEntity entity="route" icon={RouteIcon} />
   return (
     <div className={contentClassName}>
       <RouteHeader routeId={routeId} />
@@ -50,33 +49,6 @@ export function RouteEditor({ routeId }: { routeId: NodeId }) {
         <ResponsesPanel routeId={routeId} />
         <AddRequestBodyLink routeId={routeId} />
       </div>
-    </div>
-  )
-}
-
-/** Reactive: an undo can bring the route back while this is on screen. */
-function MissingRoute() {
-  const canUndo = useCanUndo()
-  const { undo } = useActions()
-  return (
-    <div className={contentClassName}>
-      <EmptyState
-        icon={RouteIcon}
-        title="This route is gone."
-        description="It may have been deleted or replaced by an import."
-        actions={
-          <>
-            <Link to="/" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-              Go to overview
-            </Link>
-            {canUndo && (
-              <Button variant="outline" size="sm" onClick={() => undo()}>
-                Undo
-              </Button>
-            )}
-          </>
-        }
-      />
     </div>
   )
 }

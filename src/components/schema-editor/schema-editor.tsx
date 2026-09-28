@@ -1,9 +1,7 @@
 import * as React from 'react'
-import { Link } from '@tanstack/react-router'
-import { Ellipsis, FileQuestion, Trash2 } from 'lucide-react'
+import { Boxes, Ellipsis, Trash2 } from 'lucide-react'
 import {
   confirm,
-  EmptyState,
   FieldRow,
   InlineTitleInput,
   IssueText,
@@ -13,12 +11,13 @@ import {
   SchemaTypeIcon,
   StatusChip,
 } from '@/components/shared'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useActions, useCanUndo, useSchema, useSchemaOptions } from '@/lib/openapi/selectors'
+import { MissingEntity } from '@/components/app/not-found'
+import { useActions, useSchema, useSchemaOptions } from '@/lib/openapi/selectors'
 import { useEditorStore } from '@/lib/openapi/store'
 import type { NodeId, SchemaNode, SchemaType } from '@/lib/openapi/types'
 import { ConstraintsPanel } from './constraints-panel'
@@ -37,7 +36,7 @@ const PAGE_CLASS = 'mx-auto flex w-full max-w-[56rem] flex-col gap-6 px-4 py-4 m
 export function SchemaEditor({ schemaId }: { schemaId: NodeId }) {
   const schema = useSchema(schemaId)
   const issues = useIssuesFor(schemaId)
-  if (!schema) return <MissingSchema />
+  if (!schema) return <MissingEntity entity="schema" icon={Boxes} />
 
   return (
     <div className={PAGE_CLASS}>
@@ -54,31 +53,6 @@ export function SchemaEditor({ schemaId }: { schemaId: NodeId }) {
         {isComposition(schema.type) && <VariantsPanel schema={schema} issues={issues} />}
         {isPrimitive(schema.type) && <ConstraintsPanel schema={schema} />}
       </div>
-    </div>
-  )
-}
-
-function MissingSchema() {
-  const canUndo = useCanUndo()
-  const { undo } = useActions()
-  return (
-    <div className={PAGE_CLASS}>
-      <EmptyState
-        icon={FileQuestion}
-        title="This schema is gone. It may have been deleted or replaced by an import."
-        actions={
-          <>
-            <Link to="/" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-              Go to overview
-            </Link>
-            {canUndo && (
-              <Button variant="outline" size="sm" onClick={undo}>
-                Undo
-              </Button>
-            )}
-          </>
-        }
-      />
     </div>
   )
 }

@@ -193,9 +193,8 @@ describe('Header', () => {
     await renderSchemaEditor(ids.tag)
 
     useEditorStore.getState().deleteSchema(ids.tag)
-    expect(
-      await screen.findByRole('heading', { name: 'This schema is gone. It may have been deleted or replaced by an import.' }),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'This schema is gone.' })).toBeInTheDocument()
+    expect(screen.getByText('It may have been deleted or replaced by an import.')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Undo' }))
     expect(await screen.findByRole('textbox', { name: 'Schema name' })).toHaveValue('Tag')
   })
