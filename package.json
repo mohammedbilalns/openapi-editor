@@ -16,6 +16,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:e2e": "playwright test --pass-with-no-tests",
     "bench": "node --expose-gc --import tsx bench/core.bench.mts"
   },

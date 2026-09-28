@@ -1,4 +1,3 @@
-/// <reference types="node" />
 /**
  * Performance regression guard on the generated ~14 MB spec.
  *
@@ -6,7 +5,7 @@
  * laptop) so the test only fails on algorithmic regressions, e.g. going back
  * to the `yaml` package (~9 s parse), deep-cloning the document per edit
  * (~20 ms and ~3 MB per keystroke) or re-emitting all YAML per edit (~1 s).
- * Skip with SKIP_PERF_TESTS=1 (e.g. on slow shared CI runners).
+ * Runs on its own with `pnpm test:perf`, since parallel test files skew timings.
  */
 import { describe, expect, it } from 'vitest';
 import { parseYaml } from '@/lib/openapi/parser';
@@ -14,15 +13,13 @@ import { serializeToYaml } from '@/lib/openapi/serializer';
 import { useEditorStore } from '@/lib/openapi/store';
 import { SIZES, generateSpecYaml } from '@/test/fixtures/generate-spec';
 
-const suite = process.env.SKIP_PERF_TESTS ? describe.skip : describe;
-
 function measure<T>(fn: () => T): { ms: number; value: T } {
   const t0 = performance.now();
   const value = fn();
   return { ms: performance.now() - t0, value };
 }
 
-suite('performance guard (large generated spec)', () => {
+describe('performance guard (large generated spec)', () => {
   it('parses, serializes and edits a ~14 MB spec within budget', () => {
     const yaml = generateSpecYaml(SIZES.large);
     expect(yaml.length).toBeGreaterThan(10 * 1024 * 1024);
