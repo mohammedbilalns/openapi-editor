@@ -27,6 +27,11 @@ export function forEachRefInSchema(schema: SchemaNode, visit: Visit): void {
   if (schema.variants) {
     for (const v of schema.variants) forEachRefInSchemaOrRef(v, visit);
   }
+  if (schema.otherCompositions) {
+    for (const list of Object.values(schema.otherCompositions)) {
+      for (const v of list ?? []) forEachRefInSchemaOrRef(v, visit);
+    }
+  }
   if (schema.additionalProperties) forEachRefInSchemaOrRef(schema.additionalProperties, visit);
   if (schema.not) forEachRefInSchemaOrRef(schema.not, visit);
   forEachMappingTarget(schema, visit);

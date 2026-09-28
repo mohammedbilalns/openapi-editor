@@ -41,6 +41,12 @@ export interface SchemaNode {
   properties?: Map<string, PropertyDef>;
   items?: SchemaOrRef;
   variants?: SchemaOrRef[];
+  /**
+   * Compositions next to the one `type` names (`allOf` + `oneOf` on one
+   * schema). The editor doesn't show them, but their references are tracked
+   * (usage, rename, delete) and export writes them back.
+   */
+  otherCompositions?: Partial<Record<'oneOf' | 'anyOf' | 'allOf', SchemaOrRef[]>>;
   /** The enum's JSON values: strings, or numbers/booleans for non-string enums (see `enumType`). */
   enumValues?: Array<string | number | boolean>;
   required?: string[];

@@ -412,6 +412,11 @@ function validateReferences(
         checkRef(variant, `${context}[variant]`, nodeId);
       }
     }
+    if (schema.otherCompositions) {
+      for (const [key, list] of Object.entries(schema.otherCompositions)) {
+        for (const variant of list ?? []) checkRef(variant, `${context}[${key}]`, nodeId);
+      }
+    }
     if (schema.additionalProperties) {
       checkRef(schema.additionalProperties, `${context}[additionalProperties]`, nodeId);
     }

@@ -372,6 +372,12 @@ function serializeSchema(schema: SchemaNode, doc: ApiDocument, description = sch
   if (schema.not !== undefined) {
     result.not = serializeSchemaOrRef(schema.not, doc);
   }
+  if (schema.otherCompositions !== undefined) {
+    // The edited composition wins over a second one of the same kind
+    for (const [key, list] of Object.entries(schema.otherCompositions)) {
+      if (list && result[key] === undefined) result[key] = list.map((v) => serializeSchemaOrRef(v, doc));
+    }
+  }
   if (schema.discriminator !== undefined && result.discriminator === undefined) {
     const discriminator = serializeDiscriminator(schema, doc);
     if (discriminator) result.discriminator = discriminator;

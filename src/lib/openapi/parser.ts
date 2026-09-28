@@ -770,9 +770,13 @@ function parseSchema(
   }
   // Modelled keywords the model could not take here (rare, so checked one by one)
   if (keepRawType) extra = keepKeyword(extra, schemaData, 'type');
-  if (composition !== 'oneOf') extra = keepKeyword(extra, schemaData, 'oneOf');
-  if (composition !== 'anyOf') extra = keepKeyword(extra, schemaData, 'anyOf');
-  if (composition !== 'allOf') extra = keepKeyword(extra, schemaData, 'allOf');
+  for (const key of ['oneOf', 'anyOf', 'allOf'] as const) {
+    if (key === composition || schemaData[key] === undefined) continue;
+    // A second composition: parsed, so its refs follow renames, but not editable
+    if (Array.isArray(schemaData[key])) {
+      (schema.otherCompositions ??= {})[key] = (schemaData[key] as unknown[]).map((v) => parseSchemaOrRef(v, ctx));
+    } else extra = keepKeyword(extra, schemaData, key);
+  }
   if (type !== 'enum') extra = keepKeyword(extra, schemaData, 'enum');
   if (description === undefined) extra = keepKeyword(extra, schemaData, 'description');
   if (!schema.properties) extra = keepKeyword(extra, schemaData, 'properties');

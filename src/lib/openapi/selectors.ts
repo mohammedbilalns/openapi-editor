@@ -7,6 +7,7 @@
  * returns the same reference until its inputs change.
  */
 import { selectCanRedo, selectCanUndo } from './derive'
+import { forEachRefInRoute, forEachRefInSchema } from './refs'
 import { useEditorStore } from './store'
 import type {
   HttpMethod,
@@ -14,7 +15,6 @@ import type {
   NodeId,
   Route,
   SchemaNode,
-  SchemaOrRef,
   SchemaType,
   SecurityScheme,
   Server,
@@ -191,32 +191,9 @@ export const useSchemaOptions = (): SchemaOption[] => useEditorStore((s) => buil
 
 export type SchemaReferrer = { kind: 'route' | 'schema'; id: NodeId; label: string }
 
-function collectRefs(value: SchemaOrRef | undefined, into: Set<NodeId>, seen: Set<SchemaNode>) {
-  if (!value) return
-  if (value.kind === 'ref') {
-    into.add(value.targetId)
-    return
-  }
-  collectSchemaRefs(value.schema, into, seen)
-}
-
-function collectSchemaRefs(schema: SchemaNode, into: Set<NodeId>, seen: Set<SchemaNode>) {
-  if (seen.has(schema)) return
-  seen.add(schema)
-  if (schema.properties) for (const prop of schema.properties.values()) collectRefs(prop.schema, into, seen)
-  collectRefs(schema.items, into, seen)
-  if (schema.variants) for (const variant of schema.variants) collectRefs(variant, into, seen)
-}
-
 function routeRefs(route: Route): Set<NodeId> {
   const refs = new Set<NodeId>()
-  const seen = new Set<SchemaNode>()
-  for (const param of route.parameters) collectRefs(param.schema, refs, seen)
-  if (route.requestBody) for (const media of route.requestBody.content.values()) collectRefs(media.schema, refs, seen)
-  for (const response of route.responses.values()) {
-    if (response.content) for (const media of response.content.values()) collectRefs(media.schema, refs, seen)
-    if (response.headers) for (const header of response.headers.values()) collectRefs(header.schema, refs, seen)
-  }
+  forEachRefInRoute(route, (target) => refs.add(target))
   return refs
 }
 
@@ -238,8 +215,9 @@ export const buildSchemaUsage = memoByRef(
       for (const target of routeRefs(route)) add(target, { kind: 'route', id: route.id, label })
     }
     for (const schema of schemas.values()) {
+      // The same walk as the usage counts (refs.ts), so "Used in" lists what the count counts
       const refs = new Set<NodeId>()
-      collectSchemaRefs(schema, refs, new Set())
+      forEachRefInSchema(schema, (target) => refs.add(target))
       refs.delete(schema.id)
       const label = schema.name || 'Unnamed schema'
       for (const target of refs) add(target, { kind: 'schema', id: schema.id, label })

@@ -245,6 +245,9 @@ function brokenRefsInSchema(schema: SchemaNode, valid: Map<NodeId, unknown>): nu
   if (schema.properties) for (const prop of schema.properties.values()) count += brokenRefCount(prop.schema, valid)
   count += brokenRefCount(schema.items, valid)
   if (schema.variants) for (const variant of schema.variants) count += brokenRefCount(variant, valid)
+  for (const list of Object.values(schema.otherCompositions ?? {})) {
+    for (const variant of list ?? []) count += brokenRefCount(variant, valid)
+  }
   count += brokenRefCount(schema.additionalProperties, valid)
   count += brokenRefCount(schema.not, valid)
   forEachMappingTarget(schema, (targetId) => {
@@ -290,6 +293,9 @@ function schemaBrokenRefLocations(schema: SchemaNode, doc: ApiDocument): Located
     for (const variant of schema.variants) {
       repeat(out, { field: 'variants', location: 'variants' }, brokenRefCount(variant, doc.schemas))
     }
+  }
+  for (const [key, list] of Object.entries(schema.otherCompositions ?? {})) {
+    for (const variant of list ?? []) repeat(out, { location: key }, brokenRefCount(variant, doc.schemas))
   }
   repeat(out, { location: 'additionalProperties' }, brokenRefCount(schema.additionalProperties, doc.schemas))
   repeat(out, { location: 'not' }, brokenRefCount(schema.not, doc.schemas))
