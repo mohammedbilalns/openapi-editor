@@ -1,0 +1,566 @@
+openapi: 3.0.3
+info:
+  title: Crumb & Co. Bakery
+  version: 2.3.0
+  description: |
+    Order bread from a small neighbourhood bakery. Browse today's loaves,
+    reserve a pickup slot and collect stamps towards a free loaf.
+
+    Loaves come out of the oven at 7:00 and 11:30. Anything unsold by closing
+    goes to the food bank, so stock counts reset every morning.
+  termsOfService: https://crumbandco.example/terms
+  contact:
+    name: Crumb & Co. front counter
+    email: counter@crumbandco.example
+    url: https://crumbandco.example/help
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: https://api.crumbandco.example/v2
+    description: Production
+  - url: https://sandbox.crumbandco.example/v2
+    description: Sandbox. Orders are never baked.
+  - url: http://localhost:8787/v2
+    description: Local development
+tags:
+  - name: loaves
+    description: Today's bread, its flour and its allergens.
+  - name: orders
+    description: Place, track and cancel orders.
+  - name: pickup
+    description: Pickup slots at the counter.
+  - name: loyalty
+    description: Stamp cards. Ten stamps buy a loaf.
+security:
+  - bearerAuth: []
+paths:
+  /loaves:
+    get:
+      tags: [loaves]
+      summary: List today's loaves
+      description: Loaves baked today, in the order they come out of the oven.
+      operationId: listLoaves
+      security: []
+      parameters:
+        - name: flour
+          in: query
+          description: Only loaves made mainly with this flour.
+          schema:
+            $ref: '#/components/schemas/Flour'
+        - name: inStock
+          in: query
+          description: Hide loaves that have sold out.
+          schema:
+            type: boolean
+            default: true
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: The loaves on the shelf right now.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Loaf'
+    post:
+      tags: [loaves]
+      summary: Add a loaf to the menu
+      operationId: createLoaf
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Loaf'
+      responses:
+        '201':
+          description: The loaf is on the menu from tomorrow.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loaf'
+        '409':
+          description: A loaf with this name already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /loaves/{loafId}:
+    parameters:
+      - name: loafId
+        in: path
+        required: true
+        description: Short, human-readable loaf id such as "country-sourdough".
+        schema:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+    get:
+      tags: [loaves]
+      summary: Get a loaf
+      operationId: getLoaf
+      security: []
+      responses:
+        '200':
+          description: The loaf.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loaf'
+        '404':
+          description: No loaf with this id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    patch:
+      tags: [loaves]
+      summary: Change price or stock
+      operationId: updateLoaf
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Loaf'
+      responses:
+        '200':
+          description: The updated loaf.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loaf'
+        '404':
+          description: No loaf with this id.
+    delete:
+      tags: [loaves]
+      summary: Retire a loaf
+      description: Takes the loaf off the menu. Open orders for it are still baked.
+      operationId: retireLoaf
+      responses:
+        '204':
+          description: Retired.
+        '404':
+          description: No loaf with this id.
+  /loaves/{loafId}/allergens:
+    get:
+      tags: [loaves]
+      summary: List allergens in a loaf
+      operationId: listAllergens
+      security: []
+      parameters:
+        - name: loafId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Allergens, including traces from shared equipment.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Allergen'
+  /orders:
+    get:
+      tags: [orders]
+      summary: List your orders
+      operationId: listOrders
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - name: since
+          in: query
+          description: Only orders placed on or after this date.
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Orders, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+    post:
+      tags: [orders]
+      summary: Place an order
+      description: Reserves loaves for a pickup slot. Orders placed after 18:00 are baked the next morning.
+      operationId: placeOrder
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Any unique string. Retrying with the same key never bakes twice.
+          schema:
+            type: string
+            format: uuid
+        - name: dryRun
+          in: query
+          description: Check stock and price without placing the order.
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Order'
+      responses:
+        '201':
+          description: The order is in the queue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '409':
+          description: A loaf sold out while you were ordering.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: The pickup slot is full or in the past.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /orders/{orderId}:
+    get:
+      tags: [orders]
+      summary: Track an order
+      operationId: getOrder
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The order and where it is in the oven queue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404':
+          description: No order with this id.
+  /orders/{orderId}/cancel:
+    post:
+      tags: [orders]
+      summary: Cancel an order
+      description: Only possible before the dough goes in the oven.
+      operationId: cancelOrder
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Cancelled. Any payment is refunded.
+        '409':
+          description: Too late, it is already baking.
+  /orders/{orderId}/receipt:
+    get:
+      tags: [orders]
+      summary: Download a receipt
+      operationId: getReceipt
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: A plain-text receipt.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /pickup-slots:
+    get:
+      tags: [pickup]
+      summary: List pickup slots
+      operationId: listPickupSlots
+      security: []
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Fifteen-minute slots with the number of places left.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PickupSlot'
+  /pickup-slots/{slotId}/hold:
+    parameters:
+      - name: slotId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [pickup]
+      summary: Hold a slot for ten minutes
+      responses:
+        '201':
+          description: Held. Place the order before the hold expires.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PickupSlot'
+        '422':
+          description: The slot is full.
+    delete:
+      tags: [pickup]
+      summary: Release a held slot
+      operationId: releaseSlot
+      responses:
+        '204':
+          description: Released.
+  /members/{memberId}/stamps:
+    parameters:
+      - name: memberId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [loyalty]
+      summary: Get a stamp card
+      operationId: getStampCard
+      responses:
+        '200':
+          description: Stamps collected so far.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StampCard'
+    post:
+      tags: [loyalty]
+      summary: Add a stamp
+      operationId: addStamp
+      security:
+        - counterKey: []
+      responses:
+        '200':
+          description: The card after stamping.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StampCard'
+        '429':
+          description: One stamp per visit, please.
+  /health:
+    get:
+      summary: Check the oven is on
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Warm.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ovenTemperatureC:
+                    type: integer
+                    example: 240
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Customer token from the Crumb & Co. app.
+    counterKey:
+      type: apiKey
+      in: header
+      name: X-Counter-Key
+      description: Issued to the till at the front counter.
+  schemas:
+    Loaf:
+      type: object
+      description: A bread on today's menu.
+      required: [id, name, flour, priceCents]
+      properties:
+        id:
+          type: string
+          description: Lowercase words joined by hyphens.
+          example: country-sourdough
+        name:
+          type: string
+          description: The name on the chalkboard.
+          maxLength: 60
+          example: Country sourdough
+        flour:
+          $ref: '#/components/schemas/Flour'
+        crumb:
+          type: string
+          enum: [open, tight, cakey]
+          description: How the inside looks when you cut it.
+        hydrationPercent:
+          type: integer
+          description: Water per 100 g of flour.
+          minimum: 55
+          maximum: 95
+          example: 78
+        priceCents:
+          type: integer
+          description: Price in euro cents, VAT included.
+          minimum: 0
+          example: 650
+        weightGrams:
+          type: integer
+          description: Weight after baking.
+          example: 900
+        inStock:
+          type: integer
+          description: Loaves left on the shelf.
+          example: 12
+        allergens:
+          type: array
+          items:
+            $ref: '#/components/schemas/Allergen'
+        bakedAt:
+          type: string
+          description: When the loaf came out of the oven.
+          format: date-time
+          readOnly: true
+    Flour:
+      type: string
+      description: The main flour in the dough.
+      enum: [wheat, wholewheat, rye, spelt, einkorn, buckwheat]
+    Allergen:
+      type: string
+      enum: [gluten, sesame, nuts, dairy, egg, mustard]
+    Order:
+      type: object
+      required: [lines, pickupSlotId]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderLine'
+        pickupSlotId:
+          type: string
+        payment:
+          $ref: '#/components/schemas/Payment'
+        totalCents:
+          type: integer
+          readOnly: true
+        note:
+          type: string
+          maxLength: 280
+          example: Please slice the rye.
+    OrderLine:
+      type: object
+      required: [loafId, quantity]
+      properties:
+        loafId:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 12
+        sliced:
+          type: boolean
+          default: false
+    OrderStatus:
+      type: string
+      enum: [received, proofing, baking, cooling, ready, collected, cancelled]
+    Payment:
+      description: Pay in the app now, or at the counter on pickup.
+      oneOf:
+        - $ref: '#/components/schemas/CardPayment'
+        - $ref: '#/components/schemas/PayAtCounter'
+      discriminator:
+        propertyName: method
+    CardPayment:
+      type: object
+      required: [method, token]
+      properties:
+        method:
+          type: string
+          enum: [card]
+        token:
+          type: string
+          description: Token from the payment provider. Card numbers never reach the bakery.
+    PayAtCounter:
+      type: object
+      required: [method]
+      properties:
+        method:
+          type: string
+          enum: [counter]
+        exactChange:
+          type: boolean
+    PickupSlot:
+      type: object
+      properties:
+        id:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        placesLeft:
+          type: integer
+          minimum: 0
+    StampCard:
+      type: object
+      properties:
+        memberId:
+          type: string
+        stamps:
+          type: integer
+          minimum: 0
+          maximum: 10
+        freeLoafReady:
+          type: boolean
+    Problem:
+      type: object
+      description: An error in RFC 9457 problem details format.
+      properties:
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

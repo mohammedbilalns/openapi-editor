@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:e2e": "playwright test --pass-with-no-tests",
-    "bench": "node --expose-gc --import tsx bench/core.bench.mts"
+    "bench": "node --expose-gc --import tsx bench/core.bench.mts",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
