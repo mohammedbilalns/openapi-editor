@@ -465,7 +465,12 @@ function validateReferences(
     usedSchemaIds.add(targetId);
   };
   for (const route of doc.routes.values()) forEachRefInRoute(route, markUsed);
-  for (const schema of doc.schemas.values()) forEachRefInSchema(schema, markUsed);
+  // A schema that only refers to itself (a tree node nobody uses) is still unused
+  for (const schema of doc.schemas.values()) {
+    forEachRefInSchema(schema, (targetId) => {
+      if (targetId !== schema.id) markUsed(targetId);
+    });
+  }
 
   // Report orphaned schemas
   for (const [id, schema] of doc.schemas) {

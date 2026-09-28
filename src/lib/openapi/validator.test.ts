@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateDocument } from './validator';
+import { getSchemaUsageCounts } from './refs';
 import {
   createEmptyDocument,
   createRoute,
@@ -214,6 +215,15 @@ describe('validateDocument', () => {
       pet.properties!.set('u', { name: 'u', required: false, schema: ref(used) });
       const hits = find(validateDocument(doc), 'ORPHANED_SCHEMA');
       expect(hits.map((h) => h.location.nodeId)).toEqual([orphan.id]);
+    });
+
+    it('ORPHANED_SCHEMA for a schema only it refers to, matching its usage count of 0', () => {
+      const { doc } = cleanDoc();
+      const node = addSchema(doc, createSchema('object', 'TreeNode'));
+      node.properties = new Map([['parent', { name: 'parent', required: false, schema: ref(node) }]]);
+      const hits = find(validateDocument(doc), 'ORPHANED_SCHEMA');
+      expect(hits.map((h) => h.location.nodeId)).toEqual([node.id]);
+      expect(getSchemaUsageCounts(doc).get(node.id) ?? 0).toBe(0);
     });
 
     it('CIRCULAR_REFERENCE for a schema referencing itself', () => {
