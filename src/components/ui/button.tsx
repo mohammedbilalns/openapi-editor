@@ -26,7 +26,8 @@ const buttonVariants = cva(
           "hover:border-primary/90 hover:bg-primary/90",
           "active:scale-[0.98] active:border-primary/85 active:bg-primary/85 active:shadow-xs active:duration-160 active:ease-snappy",
           "data-pressed:scale-[0.98] data-pressed:border-primary/85 data-pressed:bg-primary/85 data-pressed:shadow-xs",
-          "motion-reduce:active:scale-100",
+          // §7: no transforms under reduced motion (press feedback keeps its colour change).
+          "motion-reduce:active:scale-100 motion-reduce:data-pressed:scale-100",
         ],
         outline: [
           "border-border bg-background text-foreground shadow-xs/5",

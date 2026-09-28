@@ -1,12 +1,14 @@
 import * as React from 'react'
 import { Link } from '@tanstack/react-router'
-import { Boxes, CircleAlert, CircleX, FileText, Import, Info, Plus, Route as RouteIcon, Tag, TriangleAlert } from 'lucide-react'
-import { EmptyState, PageHeader, Panel, StatusChip } from '@/components/shared'
+import { Boxes, CircleAlert, CircleX, FileText, Import, Info, Lightbulb, Plus, Route as RouteIcon, Tag, TriangleAlert } from 'lucide-react'
+import { useLiveIssues } from '@/components/inspector/live-issues'
+import { EmptyState, MetaChip, PageHeader, Panel, StatusChip } from '@/components/shared'
 import { Button } from '@/components/ui/button'
 import { useInfo, useRouteCount, useSchemaCount, useTags } from '@/lib/openapi/selectors'
 import { cn } from '@/lib/utils'
+import { plainTextSummary } from './plain-text'
 import { showInspector } from './inspector-controls'
-import { entityLabel, problemLink, useValidationIssues, type Issue } from '@/lib/openapi/analysis'
+import { entityLabel, problemLink, type Issue } from '@/lib/openapi/analysis'
 import { shell } from './shell-state'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
@@ -17,8 +19,7 @@ export function Overview() {
   const routes = useRouteCount()
   const schemas = useSchemaCount()
   const tags = useTags()
-  const validation = useValidationIssues()
-  const problems = validation.counts
+  const issues = useLiveIssues()
 
   if (routes === 0 && schemas === 0) {
     return (
@@ -49,13 +50,15 @@ export function Overview() {
   }
 
   const title = info.title || 'Untitled API'
-  const problemCount = problems.errors + problems.warnings
+  const problemCount = issues.problems.length
+  const suggestionCount = issues.suggestions.length
+  const description = info.description ? plainTextSummary(info.description) : ''
 
   return (
     <div className="@container mx-auto flex w-full max-w-[56rem] flex-col gap-6 px-4 py-4 md:px-6 md:py-6">
       <PageHeader
         title={`${title.replace(/[.!?]$/, '')}. ${plural(routes, 'route', 'routes')}, ${plural(schemas, 'schema', 'schemas')}.`}
-        description={info.description || undefined}
+        description={description || undefined}
       />
       <div className="grid grid-cols-2 gap-4 @[40rem]:grid-cols-4">
         <StatTile label="Routes" icon={RouteIcon} value={routes} />
@@ -68,18 +71,26 @@ export function Overview() {
           footer={
             problemCount > 0 ? (
               <div className="flex flex-wrap gap-1.5">
-                {problems.errors > 0 && (
-                  <StatusChip tone="destructive">{plural(problems.errors, 'error', 'errors')}</StatusChip>
+                {issues.errors > 0 && (
+                  <StatusChip tone="destructive">{plural(issues.errors, 'error', 'errors')}</StatusChip>
                 )}
-                {problems.warnings > 0 && (
-                  <StatusChip tone="warning">{plural(problems.warnings, 'warning', 'warnings')}</StatusChip>
+                {issues.warnings > 0 && (
+                  <StatusChip tone="warning">{plural(issues.warnings, 'warning', 'warnings')}</StatusChip>
                 )}
               </div>
+            ) : suggestionCount > 0 ? (
+              <MetaChip icon={Lightbulb}>{plural(suggestionCount, 'suggestion', 'suggestions')}</MetaChip>
             ) : undefined
           }
         />
       </div>
-      <ProblemsPanel issues={validation.issues} />
+      <IssuesPanel
+        title="Problems"
+        icon={CircleAlert}
+        issues={issues.problems}
+        empty="No problems. The spec validates cleanly."
+      />
+      {suggestionCount > 0 && <IssuesPanel title="Suggestions" icon={Lightbulb} issues={issues.suggestions} />}
     </div>
   )
 }
@@ -111,19 +122,31 @@ function StatTile({
 }
 
 const severityIcon = { error: CircleX, warning: TriangleAlert, info: Info } as const
+const severityLabel = { error: 'Error', warning: 'Warning', info: 'Suggestion' } as const
 const severityClass = {
   error: 'text-destructive-foreground',
   warning: 'text-warning-foreground',
   info: 'text-muted-foreground',
 } as const
 
-function ProblemsPanel({ issues }: { issues: readonly Issue[] }) {
+/** Top five of a list, with "View all" opening the inspector's Problems tab (which lists both). */
+function IssuesPanel({
+  title,
+  icon,
+  issues,
+  empty,
+}: {
+  title: string
+  icon: React.ComponentType<{ className?: string }>
+  issues: readonly Issue[]
+  empty?: string
+}) {
   const deferred = React.useDeferredValue(issues)
   const top = deferred.slice(0, 5)
   return (
     <Panel
-      title="Problems"
-      icon={CircleAlert}
+      title={title}
+      icon={icon}
       count={deferred.length}
       flush
       actions={
@@ -135,7 +158,7 @@ function ProblemsPanel({ issues }: { issues: readonly Issue[] }) {
       }
     >
       {top.length === 0 ? (
-        <p className="px-4 py-3 text-[13px] text-muted-foreground">No problems. The spec validates cleanly.</p>
+        <p className="px-4 py-3 text-[13px] text-muted-foreground">{empty}</p>
       ) : (
         <ul className="divide-y divide-border/70">
           {top.map((issue) => {
@@ -150,10 +173,15 @@ function ProblemsPanel({ issues }: { issues: readonly Issue[] }) {
                   className="flex min-h-10 items-start gap-2.5 px-4 py-2.5 text-[13px] outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                 >
                   <Icon aria-hidden className={cn('mt-0.5 size-3.5 shrink-0', severityClass[issue.severity])} />
-                  <span className="sr-only">{issue.severity === 'error' ? 'Error' : issue.severity === 'warning' ? 'Warning' : 'Note'}:</span>
-                  <span className="min-w-0 flex-1">{issue.message}</span>
-                  <span className="max-w-[40%] shrink-0 truncate font-mono text-[12px] text-muted-foreground">
-                    {location}
+                  <span className="sr-only">{severityLabel[issue.severity]}:</span>
+                  {/* Narrow (phones, a wide inspector): the location goes under the message instead of truncating. */}
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5 @[32rem]:flex-row @[32rem]:items-start @[32rem]:gap-2.5">
+                    <span className="min-w-0 @[32rem]:flex-1">{issue.message}</span>
+                    {location && (
+                      <span className="min-w-0 font-mono text-[12px] break-all text-muted-foreground @[32rem]:max-w-[40%] @[32rem]:shrink-0 @[32rem]:truncate @[32rem]:break-normal">
+                        {location}
+                      </span>
+                    )}
                   </span>
                 </Link>
               </li>

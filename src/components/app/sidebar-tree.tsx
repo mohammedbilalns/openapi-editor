@@ -8,7 +8,8 @@ import { useDeleteSchema } from '@/components/schema-editor/use-delete-schema'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useUiPrefs } from '@/hooks/use-ui-prefs'
-import { useIssuesFor, useProblemCounts } from '@/lib/openapi/analysis'
+import { useIssuesFor } from '@/lib/openapi/analysis'
+import { useLiveProblemCount } from '@/components/inspector/live-issues'
 import {
   useRouteCount,
   useRouteTree,
@@ -193,8 +194,7 @@ const NavRow = React.memo(function NavRow({ item }: { item: 'overview' | 'settin
 })
 
 function ProblemsNavRow() {
-  const counts = useProblemCounts()
-  const count = counts.errors + counts.warnings
+  const count = useLiveProblemCount()
   return (
     <button type="button" className={cn(navItemClassName, 'cursor-pointer')} onClick={() => showInspector('problems')}>
       <CircleAlert aria-hidden />

@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useUiPrefs, type InspectorTab } from '@/hooks/use-ui-prefs'
-import { useProblemCounts, useSerializedYaml, type SerializedYaml } from '@/lib/openapi/analysis'
+import { useSerializedYaml, type SerializedYaml } from '@/lib/openapi/analysis'
+import { useShellState } from '@/components/app/shell-state'
 import { cn } from '@/lib/utils'
 import { currentYaml, exportYaml } from './export-yaml'
+import { useLiveProblemCount } from './live-issues'
 import { ProblemsList } from './problems-list'
 import { YamlView } from './yaml-view'
 
@@ -65,6 +67,9 @@ function YamlTab({ yaml }: { yaml: SerializedYaml }) {
   return <YamlView result={result} />
 }
 
+/** The sheet covers the page, so jumping to a problem (even one on this page: only the hash changes) closes it. */
+const closeSheet = () => useShellState.setState({ inspectorSheetOpen: false })
+
 export type InspectorProps = {
   /** `panel`: resizable right column. `sheet`: inside A's Sheet (a close button sits top-right). */
   variant: 'panel' | 'sheet'
@@ -74,11 +79,9 @@ export type InspectorProps = {
 export function Inspector({ variant }: InspectorProps) {
   const tab = useUiPrefs((s) => s.inspectorTab)
   const setTab = useUiPrefs((s) => s.setInspectorTab)
-  const setOpen = useUiPrefs((s) => s.setInspectorOpen)
-  const counts = useProblemCounts()
+  const problemCount = useLiveProblemCount()
   // Serializes only while the YAML tab is showing (BLUEPRINT §5.4).
   const yaml = useSerializedYaml(tab === 'yaml')
-  const problemCount = counts.errors + counts.warnings
 
   return (
     <Tabs
@@ -110,23 +113,24 @@ export function Inspector({ variant }: InspectorProps) {
             )}
           </TabsTrigger>
         </TabsList>
-        <div className="ml-auto flex items-center gap-0.5">
-          {tab === 'yaml' && (
+        {/* YAML actions only make sense next to the YAML. */}
+        {tab === 'yaml' && (
+          <div className="ml-auto flex items-center gap-0.5">
             <span aria-live="polite" className="mr-1 text-xs text-muted-foreground">
               {yaml.pending ? 'Updating…' : ''}
             </span>
-          )}
-          <CopyButton />
-          <IconAction label="Download YAML" onClick={() => void exportYaml()}>
-            <Download aria-hidden />
-          </IconAction>
-        </div>
+            <CopyButton />
+            <IconAction label="Download YAML" onClick={() => void exportYaml()}>
+              <Download aria-hidden />
+            </IconAction>
+          </div>
+        )}
       </header>
       <TabsContent value="yaml" className="min-h-0 flex-1">
         {tab === 'yaml' && <YamlTab yaml={yaml} />}
       </TabsContent>
       <TabsContent value="problems" className="min-h-0 flex-1">
-        {tab === 'problems' && <ProblemsList onNavigate={variant === 'sheet' ? () => setOpen(false) : undefined} />}
+        {tab === 'problems' && <ProblemsList onNavigate={variant === 'sheet' ? closeSheet : undefined} />}
       </TabsContent>
     </Tabs>
   )

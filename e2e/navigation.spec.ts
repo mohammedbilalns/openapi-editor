@@ -16,9 +16,6 @@ test.describe('deep links', () => {
 
   test('the breadcrumb names a missing schema as missing', async ({ page }, testInfo) => {
     test.skip(isMobile(testInfo), 'the breadcrumb trail is a desktop element')
-    // Known bug: usePageCrumbs maps a missing schema's name to '' (not undefined), so the
-    // "missing" branch never runs and the crumb reads "Unnamed schema".
-    test.fail(true, 'breadcrumb shows "Unnamed schema" for a schema that does not exist')
     await openApp(page, '/schemas/does-not-exist')
     await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Missing schema', { timeout: 2_000 })
   })

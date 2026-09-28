@@ -18,6 +18,7 @@ import { SaveStatus } from './save-status'
 import { shell } from './shell-state'
 import { PALETTE_KEYS } from './shortcuts'
 import { SidebarTree } from './sidebar-tree'
+import { WordmarkGlyph } from './wordmark-glyph'
 
 export type AppSidebarProps = {
   /** Drawer variant (<768px) adds a close button to the wordmark row. */
@@ -34,7 +35,7 @@ export function AppSidebar({ onClose, className }: AppSidebarProps) {
     <div className={cn('flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground', className)}>
       <div className="flex flex-col gap-2 p-2 pb-0">
         <div className="flex h-11 items-center gap-2 px-2">
-          <img src="/icon.svg" alt="" className="size-4 shrink-0 rounded-[4px]" />
+          <WordmarkGlyph className="size-4 shrink-0 text-foreground" />
           <span className="text-sm font-medium text-foreground">OpenAPI Editor</span>
           {onClose && (
             <Button variant="ghost" size="icon-sm" className="ml-auto" aria-label="Close navigation" onClick={onClose}>

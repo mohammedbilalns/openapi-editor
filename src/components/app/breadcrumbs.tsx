@@ -26,9 +26,11 @@ export function usePageCrumbs(): Crumbs {
   })
   const params = useParams({ strict: false })
   const route = useEditorStore((s) => (params.routeId ? s.document.routes.get(params.routeId) : undefined))
-  const schemaName = useEditorStore((s) =>
-    params.schemaId ? (s.document.schemas.get(params.schemaId)?.name ?? '') : undefined,
-  )
+  // undefined: no such schema ("Missing schema"); '': a schema without a name yet.
+  const schemaName = useEditorStore((s) => {
+    const schema = params.schemaId ? s.document.schemas.get(params.schemaId) : undefined
+    return schema ? (schema.name ?? '') : undefined
+  })
 
   if (leaf === 'not-found') return { current: { kind: 'text', text: 'Not found' }, title: 'Not found' }
   if (leaf === '/_app/routes/$routeId') {

@@ -48,7 +48,8 @@ export function CommandPalette() {
       onOpenChange={(next) => useShellState.setState({ paletteOpen: next })}
       title="Command palette"
       description="Jump to a route, schema or setting, or run an action."
-      className="sm:max-w-xl"
+      // Phones: anchored near the top so the on-screen keyboard doesn't cover it.
+      className="top-[max(10vh,calc(env(safe-area-inset-top)+0.75rem))] sm:top-1/3 sm:max-w-xl"
     >
       <PaletteContent />
     </CommandDialog>

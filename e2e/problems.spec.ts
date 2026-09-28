@@ -67,9 +67,6 @@ test('a broken schema reference links to the exact response row', async ({ page 
 
 test('phone: following a problem on the current page closes the inspector sheet', async ({ page }, testInfo) => {
   test.skip(!isMobile(testInfo), 'the inspector is only a covering sheet on phones')
-  // Known bug: ProblemsList's onNavigate calls useUiPrefs.setInspectorOpen(false) (the docked
-  // panel's pref) instead of closing the sheet, and the sheet only auto-closes when the path changes.
-  test.fail(true, 'the sheet stays open when only the hash changes')
   const routeId = await brokenReference(page)
   const inspector = await openInspector(page, 'Problems')
   await inspector.getByRole('list', { name: 'Problems' }).getByRole('link', { name: /Broken reference/ }).click()
