@@ -50,6 +50,26 @@ function isV2(record: unknown): record is ProjectRecordV2 {
   return (record as ProjectRecordV2 | undefined)?.format === 2;
 }
 
+/** Another tab saved this project since this tab last loaded or wrote it. Nothing was written. */
+export class SaveConflictError extends Error {
+  constructor(projectId: string) {
+    super(`Project ${projectId} was changed in another tab`);
+    this.name = "SaveConflictError";
+  }
+}
+
+/** Another tab holds the database open on an older version and won't let this one upgrade it. */
+export class StorageBlockedError extends Error {
+  constructor() {
+    super("Another tab is using an older version of this editor. Close it, then retry.");
+    this.name = "StorageBlockedError";
+  }
+}
+
+function newWriterId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 /**
  * IndexedDB implementation of the project repository.
  *
@@ -63,10 +83,18 @@ function isV2(record: unknown): record is ProjectRecordV2 {
  */
 export class IndexedDBRepository implements IProjectRepository {
   private dbPromise: Promise<IDBDatabase> | null = null;
+  /** The open database, once `dbPromise` has resolved (lets saves start synchronously). */
+  private db: IDBDatabase | null = null;
   /** last document loaded from / written to the DB, per project id */
   private lastSaved = new Map<string, ApiDocument>();
   /** what the most recent saveProject wrote */
   lastSaveStats: SaveStats | null = null;
+  /** identifies this instance's writes in the project record */
+  readonly writerId = newWriterId();
+  /** revision last loaded or written per project id; absent = expect no stored project */
+  private revisions = new Map<string, number>();
+  /** projects another tab changed under this one; saves are refused until the next load */
+  private conflicted = new Set<string>();
 
   /**
    * Open or create the IndexedDB database
@@ -76,15 +104,41 @@ export class IndexedDBRepository implements IProjectRepository {
       return this.dbPromise;
     }
 
-    this.dbPromise = new Promise((resolve, reject) => {
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
+      let settled = false;
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
+        settled = true;
         reject(new Error("Failed to open IndexedDB"));
       };
 
+      // An older tab keeps a connection open and ignores versionchange: without
+      // this the open waits (and the app loads) forever.
+      request.onblocked = () => {
+        if (settled) return;
+        settled = true;
+        reject(new StorageBlockedError());
+      };
+
       request.onsuccess = () => {
-        resolve(request.result);
+        const db = request.result;
+        if (settled) {
+          // Unblocked after we gave up; a retry opens its own connection.
+          db.close();
+          return;
+        }
+        settled = true;
+        // Let a newer version of the app (another tab) upgrade the database.
+        db.onversionchange = () => {
+          db.close();
+          if (this.db === db) {
+            this.db = null;
+            this.dbPromise = null;
+          }
+        };
+        this.db = db;
+        resolve(db);
       };
 
       request.onupgradeneeded = (event) => {
@@ -117,6 +171,11 @@ export class IndexedDBRepository implements IProjectRepository {
         }
       };
     });
+    this.dbPromise = opening;
+    // Don't cache a failure: the next call (Retry) opens again.
+    opening.catch(() => {
+      if (this.dbPromise === opening) this.dbPromise = null;
+    });
 
     return this.dbPromise;
   }
@@ -135,15 +194,19 @@ export class IndexedDBRepository implements IProjectRepository {
       throw new Error("Failed to get project");
     });
 
+    this.conflicted.delete(id);
     if (!record) {
+      this.revisions.delete(id);
       return null;
     }
 
     if (!isV2(record)) {
       // format 1: whole document inside the project record
+      this.revisions.set(id, 0);
       this.lastSaved.delete(id);
       return deserializeProject(record);
     }
+    this.revisions.set(id, record.revision ?? 0);
 
     const { header } = record;
     const routesById = new Map(routeRecords.map((r) => [r.id, r]));
@@ -179,14 +242,41 @@ export class IndexedDBRepository implements IProjectRepository {
    * objects changed since the last load/save of this project.
    */
   async saveProject(project: StoredProject): Promise<void> {
-    const db = await this.getDB();
+    // No await before the transaction once the database is open: a save started
+    // from pagehide/beforeunload must be queued before the page goes away.
+    const db = this.db ?? (await this.getDB());
     const { metadata, document: doc } = project;
     const projectId = metadata.id;
+    if (this.conflicted.has(projectId)) throw new SaveConflictError(projectId);
     const prev = this.lastSaved.get(projectId);
     const stats: SaveStats = { full: !prev, routesWritten: 0, routesDeleted: 0, schemasWritten: 0, schemasDeleted: 0 };
+    const expected = this.revisions.get(projectId);
+    const revision = (expected ?? 0) + 1;
 
     const tx = db.transaction([PROJECTS_STORE, ROUTES_STORE, SCHEMAS_STORE], "readwrite");
     const done = transactionDone(tx);
+    const projectStore = tx.objectStore(PROJECTS_STORE);
+
+    // Check-and-set inside the transaction (readwrite transactions on these stores
+    // run one at a time): the writes below are queued now, and rolled back if
+    // another tab saved since this one last loaded or wrote the project.
+    let conflict = false;
+    const current = projectStore.get(projectId);
+    current.onsuccess = () => {
+      const stored = current.result as ProjectRecordV2 | SerializedProject | undefined;
+      const storedRevision = stored ? (isV2(stored) ? (stored.revision ?? 0) : 0) : undefined;
+      const ours = stored !== undefined && isV2(stored) && stored.writer === this.writerId;
+      if (stored && !ours && storedRevision !== expected) {
+        conflict = true;
+        tx.abort();
+        return;
+      }
+      // Commit as soon as the check passes instead of when the task ends: a save
+      // flushed from pagehide must commit before the page unloads, or the browser
+      // aborts it (edit, reload, lost).
+      tx.commit?.();
+    };
+
     const routeStore = tx.objectStore(ROUTES_STORE);
     const schemaStore = tx.objectStore(SCHEMAS_STORE);
 
@@ -231,6 +321,8 @@ export class IndexedDBRepository implements IProjectRepository {
     const record: ProjectRecordV2 = {
       format: 2,
       metadata,
+      revision,
+      writer: this.writerId,
       header: {
         id: doc.id,
         info: doc.info,
@@ -243,18 +335,35 @@ export class IndexedDBRepository implements IProjectRepository {
         schemaIds: Array.from(doc.schemas.keys()),
       },
     };
-    tx.objectStore(PROJECTS_STORE).put(record);
-    // Commit now instead of when the task ends: a save flushed from pagehide must
-    // commit before the page unloads, or the browser aborts it (edit, reload, lost).
-    tx.commit?.();
+    projectStore.put(record);
+    // The next save diffs against this one as soon as it is issued: IndexedDB runs
+    // overlapping readwrite transactions in creation order, so a save started
+    // before this one commits lands after it.
+    this.lastSaved.set(projectId, doc);
+    this.revisions.set(projectId, revision);
+    this.lastSaveStats = stats;
 
     try {
       await done;
     } catch {
+      // Unknown state on disk: the next save rewrites the whole project.
+      this.lastSaved.delete(projectId);
+      if (conflict) {
+        this.conflicted.add(projectId);
+        throw new SaveConflictError(projectId);
+      }
       throw new Error("Failed to save project");
     }
-    this.lastSaved.set(projectId, doc);
-    this.lastSaveStats = stats;
+  }
+
+  /** The revision this instance last loaded or wrote (undefined: none stored). */
+  getRevision(projectId: string): number | undefined {
+    return this.revisions.get(projectId);
+  }
+
+  /** Marks a project as changed elsewhere (e.g. told by another tab); saves are refused until the next load. */
+  markConflicted(projectId: string): void {
+    this.conflicted.add(projectId);
   }
 
   /**
@@ -304,6 +413,8 @@ export class IndexedDBRepository implements IProjectRepository {
       throw new Error("Failed to delete project");
     }
     this.lastSaved.delete(id);
+    this.revisions.delete(id);
+    this.conflicted.delete(id);
   }
 
   /**

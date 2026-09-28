@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { IndexedDBRepository } from './repository';
+import { IndexedDBRepository, SaveConflictError, StorageBlockedError } from './repository';
 import { serializeProject } from './serializer';
 import { useEditorStore } from '@/lib/openapi/store';
 import type { StoredProject } from './types';
@@ -89,7 +89,10 @@ describe('IndexedDBRepository', () => {
     await repo.saveProject(p);
     const routes = new Map(Array.from(p.document.routes).slice(0, 2));
     const smaller = { ...p.document, routes };
-    const other = new IndexedDBRepository(); // never loaded 'a'
+    const other = new IndexedDBRepository();
+    await other.getProject('a');
+    // no diff baseline (as after a failed write), but the revision it loaded is current
+    (other as unknown as { lastSaved: Map<string, unknown> }).lastSaved.clear();
     await other.saveProject({ metadata: p.metadata, document: smaller });
     expect(other.lastSaveStats?.full).toBe(true);
     expect((await new IndexedDBRepository().getProject('a'))!.document.routes.size).toBe(2);
@@ -150,5 +153,110 @@ describe('IndexedDBRepository', () => {
     expect(await repo.getActiveProjectId()).toBe('b');
     await repo.setActiveProjectId(null);
     expect(await repo.getActiveProjectId()).toBeNull();
+  });
+});
+
+describe('IndexedDBRepository: two tabs', () => {
+  it('refuses a stale save instead of mixing two tabs diffs into one document', async () => {
+    const seed = project('a', 1);
+    await repo.saveProject(seed);
+    const tabA = new IndexedDBRepository();
+    const tabB = new IndexedDBRepository();
+    const a0 = (await tabA.getProject('a'))!.document;
+    const b0 = (await tabB.getProject('a'))!.document;
+
+    // Tab B edits one route and deletes another.
+    const [first, second] = b0.routes.keys();
+    const bRoutes = new Map(b0.routes);
+    bRoutes.set(first, { ...b0.routes.get(first)!, summary: 'B edit' });
+    bRoutes.delete(second);
+    const bDoc = { ...b0, routes: bRoutes, info: { ...b0.info, title: 'B title' } };
+    await tabB.saveProject({ metadata: seed.metadata, document: bDoc });
+
+    // Tab A only renames. Its diff would overwrite B's title and keep B's other edits: a mixed document.
+    const aDoc = { ...a0, info: { ...a0.info, title: 'A title' } };
+    await expect(tabA.saveProject({ metadata: seed.metadata, document: aDoc })).rejects.toBeInstanceOf(SaveConflictError);
+    // and keeps refusing until it loads again
+    await expect(tabA.saveProject({ metadata: seed.metadata, document: aDoc })).rejects.toBeInstanceOf(SaveConflictError);
+
+    const stored = (await new IndexedDBRepository().getProject('a'))!.document;
+    expect(stored).toEqual(bDoc);
+
+    // After reloading, tab A saves normally.
+    const a1 = (await tabA.getProject('a'))!.document;
+    await tabA.saveProject({ metadata: seed.metadata, document: { ...a1, info: { ...a1.info, title: 'A again' } } });
+    expect((await new IndexedDBRepository().getProject('a'))!.document.info.title).toBe('A again');
+  });
+
+  it('back-to-back saves from one tab never conflict with each other', async () => {
+    const seed = project('a', 1);
+    await repo.saveProject(seed);
+    const tab = new IndexedDBRepository();
+    const doc = (await tab.getProject('a'))!.document;
+    const [routeId] = doc.routes.keys();
+    const added = { ...doc, info: { ...doc.info, title: 'one' } };
+    const routes = new Map(added.routes);
+    routes.delete(routeId);
+    const removed = { ...added, routes };
+    // issued without waiting, as a pagehide flush during a pending save does
+    await Promise.all([
+      tab.saveProject({ metadata: seed.metadata, document: added }),
+      tab.saveProject({ metadata: seed.metadata, document: removed }),
+    ]);
+    expect((await new IndexedDBRepository().getProject('a'))!.document).toEqual(removed);
+  });
+
+  it('a tab that found no project refuses to overwrite one another tab created', async () => {
+    const tabA = new IndexedDBRepository();
+    expect(await tabA.getProject('a')).toBeNull();
+    await new IndexedDBRepository().saveProject(project('a', 1));
+    await expect(tabA.saveProject(project('a', 2))).rejects.toBeInstanceOf(SaveConflictError);
+  });
+
+  it('refuses saves after markConflicted until the next load', async () => {
+    await repo.saveProject(project('a', 1));
+    repo.markConflicted('a');
+    await expect(repo.saveProject(project('a', 2))).rejects.toBeInstanceOf(SaveConflictError);
+    await repo.getProject('a');
+    await repo.saveProject(project('a', 3));
+  });
+});
+
+describe('IndexedDBRepository: opening the database', () => {
+  function openOld(version: number): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('openapi-editor', version);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('projects')) {
+          request.result.createObjectStore('projects', { keyPath: 'metadata.id' });
+          request.result.createObjectStore('settings');
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  it('rejects instead of hanging when an old tab blocks the upgrade, and a retry works once it closes', async () => {
+    const oldTab = await openOld(1); // previous build: ignores versionchange, keeps its connection
+    await expect(repo.getActiveProjectId()).rejects.toBeInstanceOf(StorageBlockedError);
+    oldTab.close();
+    // the rejected open isn't cached: the same instance (Retry) opens again
+    expect(await repo.getActiveProjectId()).toBeNull();
+    await repo.saveProject(project('a', 1));
+    expect(await repo.getProject('a')).not.toBeNull();
+  });
+
+  it('closes its connection when a newer version needs to upgrade', async () => {
+    await repo.saveProject(project('a', 1));
+    // a newer build in another tab opens a higher version; this repository must not block it
+    const newer = await Promise.race([
+      openOld(3).then((db) => {
+        db.close();
+        return 'opened';
+      }),
+      new Promise((resolve) => setTimeout(() => resolve('blocked'), 1000)),
+    ]);
+    expect(newer).toBe('opened');
   });
 });

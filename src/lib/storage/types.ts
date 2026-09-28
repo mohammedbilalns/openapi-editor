@@ -99,6 +99,14 @@ export interface SerializedSchema {
 export interface ProjectRecordV2 {
   format: 2;
   metadata: ProjectMetadata;
+  /**
+   * Bumped by every save. A save only lands if the stored revision is the one
+   * this tab last loaded or wrote (or this tab wrote the stored one), so two
+   * tabs can't interleave their diffs into a mixed document.
+   */
+  revision?: number;
+  /** Random id of the repository instance (tab) that wrote this revision. */
+  writer?: string;
   header: {
     id: string;
     info: ApiDocument["info"];
@@ -169,4 +177,10 @@ export interface IProjectRepository {
    * Set the currently active project ID
    */
   setActiveProjectId(id: string | null): Promise<void>;
+
+  /** The revision this instance last loaded or wrote (multi-tab conflict detection). */
+  getRevision?(projectId: string): number | undefined;
+
+  /** Refuse further saves of a project another tab has changed, until it is loaded again. */
+  markConflicted?(projectId: string): void;
 }
