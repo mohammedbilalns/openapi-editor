@@ -32,6 +32,7 @@ describe('tokenizeYamlLine', () => {
     expect(tokens('  minimum: -1.5e3')).toEqual(['key:minimum', 'punct::', 'number:-1.5e3'])
     expect(tokens('  maxLength: 0x1F')).toEqual(['key:maxLength', 'punct::', 'number:0x1F'])
     expect(tokens('  required: true')).toEqual(['key:required', 'punct::', 'boolean:true'])
+    expect(tokens('  nullable: False')).toEqual(['key:nullable', 'punct::', 'boolean:False'])
     expect(tokens('  default: null')).toEqual(['key:default', 'punct::', 'null:null'])
     expect(tokens('  version: 1.0.0')).toEqual(['key:version', 'punct::', 'string:1.0.0'])
     expect(tokens("  '200':")).toEqual(["key:'200'", 'punct::'])
@@ -67,6 +68,7 @@ describe('tokenizeYamlLine', () => {
 
   it('only starts comments at a # preceded by whitespace', () => {
     expect(tokens('  color: blue#1')).toEqual(['key:color', 'punct::', 'string:blue#1'])
+    expect(tokens('  C#: 1')).toEqual(['key:C#', 'punct::', 'number:1'])
     expect(tokens('  color: blue #1')).toEqual(['key:color', 'punct::', 'string:blue', 'comment:#1'])
     expect(tokens('# top comment: with colon')).toEqual(['comment:# top comment: with colon'])
   })

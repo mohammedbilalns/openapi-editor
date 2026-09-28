@@ -1,16 +1,28 @@
 import { expect, test, type Page } from '@playwright/test'
 import { REALISTIC_SPEC_YAML } from '../src/test/fixtures/realistic-spec'
-import { closeInspectorSheet, closeSidebar, expectYamlToContain, importByPaste, openApp, openInspector, sidebar } from './support/app'
+import {
+  closeInspectorSheet,
+  closeSidebar,
+  expectYamlToContain,
+  importByPaste,
+  isMobile,
+  openApp,
+  openInspector,
+  sidebar,
+} from './support/app'
 
+/** Below the md breakpoint the section tabs are a select. */
 async function goToSection(page: Page, label: 'Info' | 'Servers' | 'Security' | 'Tags') {
   const main = page.getByRole('main')
-  const segmented = main.getByRole('navigation', { name: 'Settings sections' })
-  if (await segmented.isVisible()) await segmented.getByRole('link', { name: label }).click()
-  else await main.getByRole('combobox', { name: 'Settings section' }).selectOption({ label })
+  if ((page.viewportSize()?.width ?? 1280) < 768) {
+    await main.getByRole('combobox', { name: 'Settings section' }).selectOption({ label })
+  } else {
+    await main.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: label }).click()
+  }
   await expect(page).toHaveURL(new RegExp(`/settings/${label.toLowerCase()}$`))
 }
 
-test('settings: info title, a server, a security scheme and a tag', async ({ page }) => {
+test('settings: info title, a server, a security scheme and a tag', async ({ page }, testInfo) => {
   await openApp(page, '/settings')
   await expect(page).toHaveURL(/\/settings\/info$/)
   const main = page.getByRole('main')
@@ -20,8 +32,9 @@ test('settings: info title, a server, a security scheme and a tag', async ({ pag
   const nav = await sidebar(page)
   await expect(nav.getByRole('button', { name: /^Zoo API/ })).toContainText('v1.0.0 · OpenAPI 3.0')
   await closeSidebar(page)
-  const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' })
-  if (await breadcrumb.isVisible()) await expect(breadcrumb.getByRole('link', { name: 'Zoo API' })).toBeVisible()
+  if (!isMobile(testInfo)) {
+    await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Zoo API' })).toBeVisible()
+  }
   await expect(page).toHaveTitle(/Zoo API/)
 
   // Servers

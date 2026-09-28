@@ -141,7 +141,9 @@ describe('RouteEditor: request body', () => {
     expect(getRoute(seeded.createPetId)!.method).toBe('get')
     expect(screen.queryByRole('region', { name: 'Request body' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Add a request body' }))
-    expect(getRoute(seeded.createPetId)!.requestBody).toBeDefined()
+    const body = getRoute(seeded.createPetId)!.requestBody!
+    expect([...body.content.keys()]).toEqual(['application/json'])
+    expect(body.content.get('application/json')!.schema).toMatchObject({ kind: 'inline', schema: { type: 'object' } })
     expect(screen.getByRole('region', { name: 'Request body' })).toHaveTextContent('GET requests usually have no body')
   })
 })

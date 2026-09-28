@@ -109,7 +109,7 @@ test('a spec that cannot be read is listed as a problem and blocks the import', 
   await dialog.getByRole('textbox', { name: 'OpenAPI document' }).fill('openapi: 3.0.3\ninfo: [unclosed\n')
   const importButton = dialog.getByRole('button', { name: 'Import', exact: true })
   await importButton.click()
-  await expect(dialog.getByRole('list', { name: 'Import problems' }).getByRole('listitem').first()).toBeVisible()
+  await expect(dialog.getByRole('list', { name: 'Import problems' })).toContainText('Failed to parse YAML')
   await expect(dialog.getByText(/stops? the import/)).toBeVisible()
   await expect(importButton).toBeDisabled()
 

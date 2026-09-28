@@ -41,7 +41,7 @@ test('first run: empty state, create a route with a path parameter, edit it, see
   await expectYamlToContain(inspector, '/pets/{id}:', 'summary: Get a pet by id', 'in: path')
 })
 
-test('editing the path adds new path parameters and never deletes old ones', async ({ page }) => {
+test('editing the path adds parameters for new segments and keeps the ones it dropped', async ({ page }) => {
   await openApp(page)
   const main = page.getByRole('main')
   await main.getByRole('button', { name: 'New route' }).click()
@@ -54,7 +54,18 @@ test('editing the path adds new path parameters and never deletes old ones', asy
   await path.blur()
 
   const params = main.getByRole('table', { name: 'Parameters' })
-  await expect(params.getByRole('row', { name: 'ownerId' })).toBeVisible()
-  await expect(params.getByRole('row', { name: 'petId' })).toBeVisible()
-  await expect(params.getByRole('row', { name: 'petId' }).getByRole('checkbox', { name: 'Required' })).toBeDisabled()
+  const petIdRow = params.getByRole('row', { name: 'petId' })
+  await expect(petIdRow.getByRole('checkbox', { name: 'Required' })).toBeChecked()
+  await expect(petIdRow.getByRole('checkbox', { name: 'Required' })).toBeDisabled()
+
+  // Dropping {ownerId} keeps its parameter: it is flagged and can now be deleted by hand.
+  await path.fill('/pets/{petId}')
+  await path.blur()
+  const ownerIdRow = params.getByRole('row', { name: 'ownerId' })
+  await expect(ownerIdRow.getByRole('textbox', { name: 'Name' })).toHaveAttribute('aria-invalid', 'true')
+  await expect(ownerIdRow.getByRole('button', { name: 'Delete parameter ownerId' })).toBeVisible()
+  await expect(petIdRow.getByRole('button', { name: /^Delete parameter/ })).toHaveCount(0)
+
+  const inspector = await openInspector(page, 'YAML')
+  await expectYamlToContain(inspector, /^ {2}\/pets\/\{petId\}:$/m, 'name: ownerId', 'name: petId')
 })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyDocument, createRoute, createSchema, type ApiDocument, type ParameterDef } from '../types'
 import { validateToIssues } from './handler'
-import { INFO_ISSUES, fieldIssues, issueField, issueProps, problemHref, type Issue } from './issues'
+import { INFO_ISSUES, countIssues, fieldIssues, issueField, issueProps, problemHref, type Issue } from './issues'
 
 function param(name: string, location: ParameterDef['in'], schema: ParameterDef['schema']): ParameterDef {
   return { id: `param-${name}`, name, in: location, required: location === 'path', schema }
@@ -71,7 +71,7 @@ describe('toIssues / validateToIssues', () => {
 
   it('sorts API info first, then routes by path, then schemas by name; errors first', () => {
     const b = createRoute('/b', 'get')
-    const a = createRoute('/a', 'get')
+    const a = createRoute('/a/{id}', 'get') // {id} has no parameter: an error
     const zeta = createSchema('enum', 'Zeta')
     const alpha = createSchema('enum', 'Alpha')
     const doc = docWith((d) => {
@@ -83,8 +83,12 @@ describe('toIssues / validateToIssues', () => {
     expect(owners).toEqual([INFO_ISSUES, a.id, b.id, alpha.id, zeta.id])
 
     const forA = validateToIssues(doc).filter((issue) => issue.owner === a.id)
-    const ranks = forA.map((issue) => ['error', 'warning', 'info'].indexOf(issue.severity))
-    expect(ranks).toEqual(ranks.toSorted((x, y) => x - y))
+    expect(forA.map((issue) => [issue.severity, issue.code])).toEqual([
+      ['error', 'UNDEFINED_PATH_PARAM'],
+      ['warning', 'MISSING_OPERATION_ID'],
+      ['warning', 'SUCCESS_WITHOUT_BODY'],
+      ['info', 'NO_ERROR_RESPONSE'],
+    ])
   })
 
   it('gives every issue a unique key', () => {
@@ -121,5 +125,12 @@ describe('issueProps / fieldIssues', () => {
   it('treats a field with both a warning and an error as invalid', () => {
     const issues = [issue('warning', 'operationId'), { ...issue('error', 'operationId'), key: 'e2' }]
     expect(issueProps(issues, 'operationId', 'op')['aria-invalid']).toBe(true)
+  })
+})
+
+describe('countIssues', () => {
+  it('counts each severity separately (info-level suggestions are not warnings)', () => {
+    const issues = [issue('info', 'a'), issue('warning', 'b'), issue('error', 'c'), issue('info', 'd'), issue('error', 'e')]
+    expect(countIssues(issues)).toEqual({ errors: 2, warnings: 1, infos: 2 })
   })
 })

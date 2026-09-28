@@ -22,14 +22,9 @@ test.describe('large spec @slow', () => {
       .getByLabel('Choose an OpenAPI file')
       .setInputFiles({ name: 'large.yaml', mimeType: 'application/yaml', buffer: Buffer.from(yaml) })
     await expect(dialog.getByText(/large\.yaml · \d+(\.\d)? MB/)).toBeVisible()
-    await dialog.getByRole('button', { name: /^Import( anyway)?$/ }).click()
-    // Warnings only (e.g. naming) offer "Import anyway"; take it if offered.
-    const anyway = dialog.getByRole('button', { name: 'Import anyway' })
-    await expect(dialog.or(anyway)).toBeVisible()
-    await expect(async () => {
-      if (await anyway.isVisible()) await anyway.click()
-      await expect(dialog).toBeHidden({ timeout: 1_000 })
-    }).toPass({ timeout: 60_000 })
+    // The generated spec parses without warnings, so it imports straight away.
+    await dialog.getByRole('button', { name: 'Import', exact: true }).click()
+    await expect(dialog).toBeHidden({ timeout: 60_000 })
     await expect(toastItem(page, `${operations} routes, ${SIZE.schemas} schemas.`)).toBeVisible()
 
     // The sidebar is virtualized: only a window of the route rows is in the DOM.

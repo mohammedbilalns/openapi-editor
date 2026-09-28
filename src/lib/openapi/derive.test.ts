@@ -66,8 +66,9 @@ describe('selectors', () => {
     expect(selectSchemaOptions(state())).toBe(options);
 
     store().updateSchema(pet.id, { name: 'Animal' });
-    const renamed = selectSchemaOptions(state());
-    expect(renamed).toEqual([{ id: pet.id, name: 'Animal', type: 'object' }]);
+    expect(selectSchemaOptions(state())).toEqual([{ id: pet.id, name: 'Animal', type: 'object' }]);
+    store().updateSchema(pet.id, { type: 'array' });
+    expect(selectSchemaOptions(state())).toEqual([{ id: pet.id, name: 'Animal', type: 'array' }]);
     store().deleteSchema(pet.id);
     expect(selectSchemaOptions(state())).toEqual([]);
   });
@@ -81,7 +82,7 @@ describe('selectors', () => {
     });
     useEditorStore.setState({ historyCoalesceMs: 500 }); // not a document change
     expect(selectRouteIdsByTag(state())).toBe(groups);
-    store().updateRoute(b.id, { tags: ['admin'] });
+    store().updateRoute(b.id, { tags: ['admin', 'admin'] }); // an imported duplicate tag lists the route once
     expect(selectRouteIdsByTag(state()).get('admin')).toEqual([a.id, b.id]);
   });
 

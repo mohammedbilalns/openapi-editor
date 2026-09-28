@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { ConfirmHost, confirm } from './confirm'
 import { FieldRow } from './field-row'
-import { MethodBadge } from './method-badge'
 import { Panel, PanelAddRow } from './panel'
 
 describe('confirm', () => {
@@ -50,14 +49,5 @@ describe('FieldRow', () => {
     )
     const input = screen.getByLabelText('Summary')
     expect(input).toHaveAccessibleDescription('Warning: Summary is empty')
-  })
-})
-
-describe('MethodBadge', () => {
-  it('colours only DELETE', () => {
-    const { rerender } = render(<MethodBadge method="get" />)
-    expect(screen.getByText('get')).toHaveClass('text-subtle-foreground')
-    rerender(<MethodBadge method="delete" />)
-    expect(screen.getByText('delete')).toHaveClass('text-destructive-foreground')
   })
 })

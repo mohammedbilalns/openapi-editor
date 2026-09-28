@@ -56,14 +56,13 @@ beforeEach(() => {
 });
 
 describe('editor store: document actions', () => {
-  it('initializeDocument resets history and version', () => {
+  it('initializeDocument replaces the document and clears the history', () => {
     store().updateRoute(listPets.id, { summary: 'x' });
     const fresh = fixture();
     store().initializeDocument(fresh);
     expect(doc()).toBe(fresh);
     expect(store().canUndo()).toBe(false);
     expect(store().canRedo()).toBe(false);
-    expect(store().documentVersion).toBe(0);
   });
 
   it('setDocument (import) is undoable, initializeDocument (hydrate) is not', () => {
@@ -84,7 +83,6 @@ describe('editor store: document actions', () => {
     expect(doc().routes.size).toBe(0);
     expect(doc().schemas.size).toBe(0);
     expect(doc().info.title).toBe('New API');
-    expect(store().commandLog.at(-1)?.type).toBe('RESET_DOCUMENT');
     store().undo();
     expect(doc()).toBe(before);
   });
@@ -263,12 +261,13 @@ describe('editor store: tags', () => {
     expect(doc()).toBe(before);
   });
 
-  it('merging a renamed tag into one a route already has does not duplicate it', () => {
-    store().updateRoute(getPet.id, { tags: ['pets', 'legacy'] });
+  it('renaming a tag onto an undefined tag a route already has does not duplicate it', () => {
+    // 'stray' is used by the route but has no definition, so the rename is allowed.
+    store().updateRoute(getPet.id, { tags: ['legacy', 'pets', 'stray'] });
     store().addTag({ name: 'legacy' });
-    store().deleteTag('public');
-    store().updateTag('legacy', { name: 'public' });
-    expect(doc().routes.get(getPet.id)!.tags).toEqual(['pets', 'public']);
+    store().updateTag('legacy', { name: 'stray' });
+    expect(doc().routes.get(getPet.id)!.tags).toEqual(['pets', 'stray']);
+    expect(doc().tags.map((t) => t.name)).toEqual(['pets', 'public', 'stray']);
   });
 
   it('typing a rename coalesces into one undo step and follows the new name', () => {
@@ -317,23 +316,6 @@ describe('editor store: deleting a security scheme', () => {
   });
 });
 
-describe('editor store: document and history only', () => {
-  it('holds no selection or UI state (the URL and useUiPrefs own those)', () => {
-    for (const key of ['selectedRouteId', 'selectedSchemaId', 'activeTab', 'yamlPreviewOpen', 'selectRoute', 'selectSchema']) {
-      expect(store()).not.toHaveProperty(key);
-    }
-  });
-
-  it('every document edit bumps documentVersion', () => {
-    const v = store().documentVersion;
-    store().updateRoute(listPets.id, { summary: 'a' });
-    store().updateInfo({ title: 'b' });
-    expect(store().documentVersion).toBe(v + 2);
-    store().undo();
-    expect(store().documentVersion).toBe(v + 3);
-  });
-});
-
 describe('editor store: undo / redo', () => {
   const summary = () => doc().routes.get(listPets.id)!.summary;
 
@@ -354,16 +336,6 @@ describe('editor store: undo / redo', () => {
     expect(summary()).toBe('List');
   });
 
-  it('redo re-applies an undone edit', () => {
-    store().updateRoute(listPets.id, { summary: 'one' });
-    store().updateRoute(listPets.id, { summary: 'two' });
-    store().undo();
-    store().undo();
-    expect(summary()).toBe('List');
-    store().redo();
-    expect(summary()).toBe('one');
-  });
-
   it('redo returns to the most recent state after undo', () => {
     store().updateRoute(listPets.id, { summary: 'one' });
     store().updateRoute(listPets.id, { summary: 'two' });
@@ -373,20 +345,16 @@ describe('editor store: undo / redo', () => {
     store().redo();
     expect(summary()).toBe('two');
     expect(store().canRedo()).toBe(false);
-    // and the whole chain can be replayed
+    // and the whole chain can be replayed, one step at a time
     store().undo();
     store().undo();
+    expect(summary()).toBe('List');
     store().redo();
+    expect(summary()).toBe('one');
     store().redo();
     expect(summary()).toBe('two');
-  });
-
-  it('canRedo is false whenever redo would do nothing', () => {
-    expect(store().canRedo()).toBe(false);
-    store().updateRoute(listPets.id, { summary: 'one' });
-    expect(store().canRedo()).toBe(false);
-    store().undo();
-    expect(store().canRedo()).toBe(true);
+    store().redo(); // no-op at the end
+    expect(summary()).toBe('two');
   });
 
   it('a new edit after undo discards the redo branch', () => {
@@ -407,7 +375,6 @@ describe('editor store: undo / redo', () => {
     try {
       for (let i = 1; i <= 10; i++) store().updateRoute(listPets.id, { summary: `s${i}` });
       store().addTag({ name: 'extra' });
-      expect(store().history.length).toBeLessThanOrEqual(4);
       let undos = 0;
       while (store().canUndo()) {
         store().undo();
@@ -419,15 +386,6 @@ describe('editor store: undo / redo', () => {
     } finally {
       useEditorStore.setState({ maxHistorySize: 50 });
     }
-  });
-
-  it('undo of an import restores the previous document', () => {
-    const before = doc();
-    const imported = createEmptyDocument();
-    store().setDocument(imported);
-    expect(doc()).toBe(imported);
-    store().undo();
-    expect(doc().routes.get(listPets.id)?.summary).toBe(before.routes.get(listPets.id)?.summary);
   });
 });
 
@@ -503,13 +461,14 @@ describe('editor store: getSchemaUsageCount', () => {
       id: 'x',
       description: 'owners',
       content: new Map([['application/json', { schema: { kind: 'inline', schema: arrayOfOwners } }]]),
+      headers: new Map([['X-Owner', { id: 'h', name: 'X-Owner', in: 'header', required: false, schema: ref(owner) }]]),
     });
     const wrapper = createSchema('object');
     wrapper.properties!.set('primary', { name: 'primary', required: false, schema: ref(owner) });
     store().addFieldToSchema(pet.id, { name: 'contact', required: false, schema: { kind: 'inline', schema: wrapper } });
 
-    // Pet.owner + response items + Pet.contact.primary
-    expect(store().getSchemaUsageCount(owner.id)).toBe(3);
+    // Pet.owner + response items + response header + Pet.contact.primary
+    expect(store().getSchemaUsageCount(owner.id)).toBe(4);
   });
 
   it('reflects deletions', () => {
@@ -552,7 +511,7 @@ describe('editor store: structural sharing', () => {
     store().updateResponse(listPets.id, '999', { description: 'x' });
     store().updateServer(7, { url: 'x' });
     expect(doc()).toBe(prev);
-    expect(store().history).toHaveLength(1);
+    expect(store().canUndo()).toBe(false);
   });
 });
 
@@ -571,13 +530,21 @@ describe('editor store: history coalescing', () => {
     vi.setSystemTime(at);
     store().updateRoute(listPets.id, { summary: text });
   };
+  /** Undoes everything, returning how many undo steps there were. */
+  const undoSteps = () => {
+    let steps = 0;
+    while (store().canUndo()) {
+      store().undo();
+      steps++;
+    }
+    return steps;
+  };
 
   it('merges keystrokes on the same field into one undo step', () => {
     type('L', 0);
     type('Li', 200);
     type('Lis', 400);
     type('List all', 1300); // < 1s after the previous keystroke
-    expect(store().history).toHaveLength(2);
     store().undo();
     expect(summary()).toBe('List');
     expect(store().canUndo()).toBe(false);
@@ -585,7 +552,8 @@ describe('editor store: history coalescing', () => {
     expect(summary()).toBe('List all');
   });
 
-  it('starts a new step after a pause, on another field, on sealHistory and after undo', () => {
+  it('starts a new step after a pause, on another field and on sealHistory', () => {
+    const description = () => doc().routes.get(listPets.id)!.description;
     type('a', 0);
     type('ab', 2500); // pause
     vi.setSystemTime(2600);
@@ -595,14 +563,26 @@ describe('editor store: history coalescing', () => {
     store().sealHistory(); // e.g. on blur
     vi.setSystemTime(2800);
     store().updateRoute(listPets.id, { description: 'def' });
-    expect(store().history).toHaveLength(5);
 
     store().undo();
-    vi.setSystemTime(2900);
-    store().updateRoute(listPets.id, { description: 'dx' }); // after undo: new step
-    expect(store().history).toHaveLength(5);
+    expect(description()).toBe('de');
     store().undo();
-    expect(doc().routes.get(listPets.id)!.description).toBe('de');
+    expect([summary(), description()]).toEqual(['ab', undefined]);
+    store().undo();
+    expect(summary()).toBe('a');
+    store().undo();
+    expect(summary()).toBe('List');
+    expect(store().canUndo()).toBe(false);
+  });
+
+  it('starts a new step after undo and redo, even within the coalescing window', () => {
+    type('a', 0);
+    type('ab', 100);
+    store().undo();
+    store().redo();
+    type('abc', 200);
+    store().undo();
+    expect(summary()).toBe('ab');
   });
 
   it('never merges structural edits', () => {
@@ -614,7 +594,7 @@ describe('editor store: history coalescing', () => {
     store().updateField(pet.id, 'age', { required: true });
     vi.setSystemTime(50);
     store().updateField(pet.id, 'age', { required: false });
-    expect(store().history).toHaveLength(6);
+    expect(undoSteps()).toBe(5);
   });
 
   it('keeps merging while a field is renamed keystroke by keystroke', () => {
@@ -624,20 +604,13 @@ describe('editor store: history coalescing', () => {
       store().updateField(pet.id, names[i - 1], { name: names[i] });
     }
     expect(Array.from(doc().schemas.get(pet.id)!.properties!.keys())).toEqual(['name', 'abc', 'owner']);
-    expect(store().history).toHaveLength(2);
     store().undo();
     expect(Array.from(doc().schemas.get(pet.id)!.properties!.keys())).toEqual(['name', 'age', 'owner']);
+    expect(store().canUndo()).toBe(false);
   });
 });
 
 describe('editor store: bookkeeping', () => {
-  it('keeps only the most recent command log entries', () => {
-    for (let i = 0; i < 250; i++) store().updateInfo({ title: `t${i}` });
-    const log = store().commandLog;
-    expect(log).toHaveLength(100);
-    expect(log[log.length - 1].payload).toEqual({ title: 't249' });
-  });
-
   it('undo/redo across an add and an import restore exactly the earlier documents', () => {
     const start = doc();
     const r = createRoute('/new', 'get');

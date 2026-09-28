@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test'
-import { closeSidebar, createRoute, openApp, openImportDialog, sidebar } from './support/app'
+import {
+  closeInspectorSheet,
+  closeSidebar,
+  createRoute,
+  expectSaved,
+  expectYamlToContain,
+  openApp,
+  openImportDialog,
+  openInspector,
+  sidebar,
+} from './support/app'
 
 test('losing the connection: an Offline badge, editing keeps working, URL import is unavailable', async ({
   page,
@@ -15,9 +25,14 @@ test('losing the connection: an Offline badge, editing keeps working, URL import
   await expect(nav.getByText('Offline', { exact: true })).toBeVisible()
   await closeSidebar(page)
 
+  // The edit reaches the document (the generated YAML) and is saved locally.
   const summary = page.getByRole('main').getByLabel('Summary')
   await summary.fill('Edited offline')
-  await expect(summary).toHaveValue('Edited offline')
+  await summary.blur()
+  await expectYamlToContain(await openInspector(page, 'YAML'), 'summary: Edited offline')
+  await closeInspectorSheet(page)
+  await expectSaved(page)
+  await closeSidebar(page)
 
   const dialog = await openImportDialog(page)
   await expect(dialog.getByRole('tab', { name: 'URL' })).toBeDisabled()

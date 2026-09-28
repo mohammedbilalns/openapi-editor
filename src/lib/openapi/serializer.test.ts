@@ -20,26 +20,6 @@ describe('serializeToYaml: realistic spec round trip', () => {
   const { doc } = parseOk(REALISTIC_SPEC_YAML);
   const out = exported(doc);
 
-  it('emits OpenAPI 3.0.3 with the same info', () => {
-    expect(out.openapi).toBe('3.0.3');
-    expect(out.info).toEqual(original.info);
-  });
-
-  it('keeps every path and method', () => {
-    const ops = (spec: Json) =>
-      Object.entries(spec.paths as Json).flatMap(([p, item]) =>
-        Object.keys(item).filter((k) => ['get', 'post', 'put', 'patch', 'delete'].includes(k)).map((m) => `${m} ${p}`)
-      );
-    expect(ops(out).sort()).toEqual(ops(original).sort());
-  });
-
-  it('keeps every component schema exactly (nullable, typed enums, defaults, mappings, extra keywords)', () => {
-    expect(Object.keys(out.components.schemas)).toEqual(Object.keys(original.components.schemas));
-    for (const name of Object.keys(original.components.schemas)) {
-      expect(out.components.schemas[name], name).toEqual(original.components.schemas[name]);
-    }
-  });
-
   it('is lossless apart from documented normalisations', () => {
     // Normalisations: version pinned to 3.0.3, components.parameters/responses
     // inlined where used, path-level parameters copied into each operation.
@@ -57,61 +37,6 @@ describe('serializeToYaml: realistic spec round trip', () => {
     expected.paths['/pets'].get.responses.default = errorResponse;
     expected.paths['/pets'].post.responses['400'] = errorResponse;
     expect(out).toEqual(expected);
-  });
-
-  it('keeps $refs, allOf members and arrays of refs', () => {
-    expect(out.components.schemas.Pet.allOf[0]).toEqual({ $ref: '#/components/schemas/NewPet' });
-    expect(out.components.schemas.Pet.allOf[1].properties.tags).toEqual({
-      type: 'array',
-      items: { $ref: '#/components/schemas/Tag' },
-    });
-    expect(out.paths['/pets'].get.responses['200'].content['application/json'].schema).toEqual({
-      type: 'array',
-      items: { $ref: '#/components/schemas/Pet' },
-    });
-  });
-
-  it('keeps parameters, request bodies with examples and response descriptions', () => {
-    const list = out.paths['/pets'].get;
-    expect(list.parameters[0]).toEqual(original.paths['/pets'].get.parameters[0]);
-    expect(list.parameters[1]).toEqual(original.paths['/pets'].get.parameters[1]);
-    expect(out.paths['/pets'].post.requestBody).toEqual(original.paths['/pets'].post.requestBody);
-    expect(out.paths['/pets'].post.responses['201']).toEqual(original.paths['/pets'].post.responses['201']);
-    expect(out.paths['/health'].get.responses).toEqual(original.paths['/health'].get.responses);
-  });
-
-  it('keeps path-level and component parameters (inlined per operation)', () => {
-    const pathParam = original.paths['/pets/{petId}'].parameters[0];
-    expect(out.paths['/pets/{petId}'].get.parameters).toEqual([pathParam]);
-    expect(out.paths['/pets/{petId}'].delete.parameters).toEqual([pathParam]);
-    expect(out.paths['/pets'].get.parameters[2]).toEqual({ name: 'X-Trace-Id', in: 'header', required: false, schema: { type: 'string' } });
-  });
-
-  it('keeps component responses (inlined) and response headers', () => {
-    const errorResponse = original.components.responses.Error;
-    expect(out.paths['/pets'].get.responses.default).toEqual(errorResponse);
-    expect(out.paths['/pets'].post.responses['400']).toEqual(errorResponse);
-    expect(out.paths['/pets/{petId}'].get.responses['404']).toEqual(errorResponse);
-    expect(out.paths['/pets'].get.responses['200']).toEqual(original.paths['/pets'].get.responses['200']);
-  });
-
-  it('keeps http, apiKey and openIdConnect security schemes', () => {
-    for (const name of ['bearerAuth', 'apiKey', 'oidc']) {
-      expect(out.components.securitySchemes[name], name).toEqual(original.components.securitySchemes[name]);
-    }
-  });
-
-  it('keeps oauth2 flows and document/operation security', () => {
-    expect(out.components.securitySchemes).toEqual(original.components.securitySchemes);
-    expect(out.security).toEqual(original.security);
-    expect(out.paths['/pets'].post.security).toEqual(original.paths['/pets'].post.security);
-    expect(out.paths['/health'].get.security).toEqual([]);
-    expect(out.paths['/pets'].get).not.toHaveProperty('security');
-  });
-
-  it('keeps servers and tags', () => {
-    expect(out.servers.map((s: Json) => s.url)).toEqual(original.servers.map((s: Json) => s.url));
-    expect(out.tags).toEqual(original.tags);
   });
 
   it('is a fixpoint: parse(serialize(x)) serializes to the same text', () => {
@@ -303,30 +228,6 @@ describe('serializeToYaml: lossless round trip of everything the editor does not
 
   it('exports exactly what was imported (only the version is pinned to 3.0.3)', () => {
     expect(out).toEqual({ ...original, openapi: '3.0.3' });
-  });
-
-  it('keeps extensions, externalDocs, links, callbacks, examples and encoding', () => {
-    expect(out['x-root-ext']).toEqual({ owner: 'platform' });
-    expect(out.externalDocs).toEqual(original.externalDocs);
-    expect(out.info['x-logo']).toEqual(original.info['x-logo']);
-    expect(out.paths['/pets']['x-path-ext']).toBe(1);
-    expect(out.paths['/pets'].summary).toBe('Pets collection');
-    expect(out.paths['/pets'].get.responses['200'].links).toEqual(original.paths['/pets'].get.responses['200'].links);
-    expect(out.paths['/pets'].post.callbacks).toEqual(original.paths['/pets'].post.callbacks);
-    expect(out.components.examples).toEqual(original.components.examples);
-    expect(out.components['x-components-ext']).toBe(1);
-  });
-
-  it('keeps TRACE operations, parameter style/explode/content and media types without a schema', () => {
-    expect(out.paths['/pets'].trace).toEqual(original.paths['/pets'].trace);
-    expect(out.paths['/pets'].get.parameters).toEqual(original.paths['/pets'].get.parameters);
-    expect(out.paths['/pets'].get.responses['200'].content['application/pdf']).toEqual({});
-  });
-
-  it('keeps untyped schemas, keywords next to compositions and constraints on every kind', () => {
-    for (const name of ['Any', 'Untyped', 'UntypedArray', 'UntypedEnum', 'Pet', 'Code', 'Tags', 'Dict', 'NotPet', 'Mixed']) {
-      expect(out.components.schemas[name], name).toEqual(original.components.schemas[name]);
-    }
   });
 
   it('emits the same text incrementally as in one pass', () => {

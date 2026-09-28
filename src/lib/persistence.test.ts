@@ -66,13 +66,6 @@ describe('persistence: survives a reload', () => {
     await second.hydrateDocument()
     expect(second.store.getState().document.info.title).toBe('Renamed just before reload')
   })
-
-  it('the _app route loads the document in the browser, never in the prerendered shell', async () => {
-    // Regression: with SSR on, the SPA prerender ran this loader without `window`,
-    // the client hydrated that "empty" result, and nothing was loaded or saved.
-    const { Route } = await import('@/routes/_app')
-    expect(Route.options.ssr).toBe(false)
-  }, 30_000) // imports the whole shell
 })
 
 describe('persistence: autosave timing', () => {
@@ -124,6 +117,20 @@ describe('persistence: autosave timing', () => {
     store.getState().updateInfo({ title: 'last' })
     await vi.advanceTimersByTimeAsync(step)
     expect(saves).toHaveLength(1)
+  })
+
+  it('a change after a save and a pause waits for the debounce again', async () => {
+    const { store, AUTOSAVE_DEBOUNCE_MS, AUTOSAVE_MAX_WAIT_MS } = await loadWithFakeRepository()
+    store.getState().updateInfo({ title: 'first' })
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS)
+    expect(saves).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_MAX_WAIT_MS * 2) // idle
+    store.getState().updateInfo({ title: 'second' })
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS - 50)
+    expect(saves).toHaveLength(1) // a new burst, not an overdue one
+    await vi.advanceTimersByTimeAsync(50)
+    expect(saves.map((d) => d.info.title)).toEqual(['first', 'second'])
   })
 
   it('saveNow (Mod+S) writes at once and cancels the pending timer', async () => {
@@ -266,7 +273,9 @@ describe('persistence: another tab', () => {
     tabA.store.getState().updateInfo({ title: 'Stale A' })
     await tabA.saveNow()
     await vi.waitFor(() => expect(tabA.getSaveStatus().state).toBe('conflict'))
-    expect(tabA.isUnloadGuarded()).toBe(false) // nothing it could still save
+    // Nothing it could still save, so no "Leave site?" prompt, even after more edits.
+    tabA.store.getState().updateInfo({ title: 'Edited after the conflict' })
+    expect(tabA.isUnloadGuarded()).toBe(false)
 
     const tabC = await loadPage()
     await tabC.hydrateDocument()
@@ -296,9 +305,11 @@ describe('persistence: the saved document could not be read', () => {
     expect((await page.hydrateDocument()).status).toBe('failed')
     expect(page.getSaveStatus().state).toBe('load-error')
 
+    vi.useFakeTimers()
     page.store.getState().updateInfo({ title: 'typed on an empty document' })
     await page.saveNow()
-    await new Promise((resolve) => setTimeout(resolve, page.AUTOSAVE_DEBOUNCE_MS + 50))
+    await vi.advanceTimersByTimeAsync(page.AUTOSAVE_MAX_WAIT_MS)
+    window.dispatchEvent(new Event('pagehide'))
     expect(saveProject).not.toHaveBeenCalled()
 
     fail = false

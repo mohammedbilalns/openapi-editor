@@ -61,7 +61,7 @@ describe('validateDocument', () => {
   describe('info rules', () => {
     it.each([
       ['MISSING_TITLE', (d: ApiDocument) => { d.info.title = '  '; }, 'error'],
-      ['MISSING_VERSION', (d: ApiDocument) => { d.info.version = ''; }, 'error'],
+      ['MISSING_VERSION', (d: ApiDocument) => { d.info.version = ' '; }, 'error'],
       ['MISSING_DESCRIPTION', (d: ApiDocument) => { d.info.description = ''; }, 'info'],
       ['NO_SERVERS', (d: ApiDocument) => { d.servers = []; }, 'warning'],
     ] as const)('%s', (code, breakIt, severity) => {
@@ -76,17 +76,18 @@ describe('validateDocument', () => {
 
   describe('schema rules', () => {
     it('DUPLICATE_SCHEMA_NAME flags the second schema only', () => {
-      const { doc, pet, get } = cleanDoc();
+      const { doc, get } = cleanDoc();
       const dup = addSchema(doc, createSchema('string', 'Pet'));
       use(doc, get, dup);
       const hits = find(validateDocument(doc), 'DUPLICATE_SCHEMA_NAME');
-      expect(hits.map((h) => h.location.nodeId)).toEqual([dup.id]);
-      expect(hits[0].location.nodeId).not.toBe(pet.id);
+      expect(hits.map((h) => h.location.nodeId)).toEqual([dup.id]); // not the first Pet
     });
 
     it('SCHEMA_NAMING_CONVENTION wants PascalCase', () => {
       const { doc, pet } = cleanDoc();
       pet.name = 'pet_model';
+      expect(codes(validateDocument(doc))).toEqual(['SCHEMA_NAMING_CONVENTION']);
+      pet.name = 'petModel';
       expect(codes(validateDocument(doc))).toEqual(['SCHEMA_NAMING_CONVENTION']);
       pet.name = 'PetModel2';
       expect(codes(validateDocument(doc))).toEqual([]);
@@ -171,10 +172,20 @@ describe('validateDocument', () => {
       use(doc, get, pet); // keep Pet referenced while responses change
       get.responses.delete('404');
       expect(codes(validateDocument(doc))).toEqual(['NO_ERROR_RESPONSE']);
+      get.responses.set('500', { id: 'z', description: 'server error' }); // 5xx counts as an error response
+      expect(codes(validateDocument(doc))).toEqual([]);
+      get.responses.delete('500');
 
       get.responses.set('404', { id: 'x', description: 'missing' });
       get.responses.set('200', { id: 'y', description: 'no body' });
       expect(codes(validateDocument(doc))).toEqual(['SUCCESS_WITHOUT_BODY']);
+      get.responses.delete('200');
+      get.responses.set('201', { id: 'c', description: 'created, no body' });
+      expect(find(validateDocument(doc), 'SUCCESS_WITHOUT_BODY').map((h) => h.message)).toEqual([
+        'The 201 response of GET /pets/{petId} has no body schema.',
+      ]);
+      get.responses.delete('201');
+      get.responses.set('200', { id: 'y', description: 'no body' });
       get.method = 'delete'; // bodiless success is fine for DELETE
       expect(codes(validateDocument(doc))).toEqual([]);
 

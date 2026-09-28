@@ -13,6 +13,24 @@ const project = (id: string, updatedAt: number): StoredProject => ({
   document: parseOk(REALISTIC_SPEC_YAML).doc,
 });
 
+/** Ids of the route or schema records stored on disk for a project (what a load does not show: leftovers). */
+async function storedIds(store: 'routes' | 'schemas', projectId: string): Promise<string[]> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const open = indexedDB.open('openapi-editor');
+    open.onsuccess = () => resolve(open.result);
+    open.onerror = () => reject(open.error);
+  });
+  try {
+    return await new Promise<string[]>((resolve, reject) => {
+      const request = db.transaction(store).objectStore(store).getAllKeys(IDBKeyRange.bound([projectId], [projectId, []]));
+      request.onsuccess = () => resolve((request.result as [string, string][]).map(([, id]) => id).toSorted());
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
 let repo: IndexedDBRepository;
 beforeEach(() => {
   globalThis.indexedDB = new IDBFactory(); // fresh, empty database per test
@@ -82,6 +100,8 @@ describe('IndexedDBRepository', () => {
     await repo.saveProject({ metadata: p.metadata, document: next });
     expect(repo.lastSaveStats).toMatchObject({ full: false, routesWritten: 0, routesDeleted: 1, schemasWritten: 0, schemasDeleted: 1 });
     expect((await new IndexedDBRepository().getProject('a'))!.document).toEqual(next);
+    expect(await storedIds('routes', 'a')).toEqual([...routes.keys()].toSorted());
+    expect(await storedIds('schemas', 'a')).toEqual([...schemas.keys()].toSorted());
   });
 
   it('a first save without a baseline replaces stale records from an earlier session', async () => {
@@ -96,6 +116,7 @@ describe('IndexedDBRepository', () => {
     await other.saveProject({ metadata: p.metadata, document: smaller });
     expect(other.lastSaveStats?.full).toBe(true);
     expect((await new IndexedDBRepository().getProject('a'))!.document.routes.size).toBe(2);
+    expect(await storedIds('routes', 'a')).toEqual([...routes.keys()].toSorted());
   });
 
   it('deleting a project removes its route and schema records', async () => {
@@ -103,13 +124,10 @@ describe('IndexedDBRepository', () => {
     await repo.saveProject(project('b', 2));
     await repo.deleteProject('a');
     expect(await repo.getProject('a')).toBeNull();
-    // re-creating 'a' with an empty document must not resurrect old records
-    const empty = project('a', 3);
-    empty.document = { ...empty.document, routes: new Map(), schemas: new Map() };
-    await new IndexedDBRepository().saveProject(empty);
-    const back = (await new IndexedDBRepository().getProject('a'))!;
-    expect(back.document.routes.size + back.document.schemas.size).toBe(0);
-    expect((await repo.getProject('b'))!.document.routes.size).toBeGreaterThan(0);
+    expect([...(await storedIds('routes', 'a')), ...(await storedIds('schemas', 'a'))]).toEqual([]);
+    // the other project's records stay
+    expect(await storedIds('routes', 'b')).toHaveLength(5);
+    expect((await repo.getProject('b'))!.document.routes.size).toBe(5);
   });
 
   it('reads format-1 records written by the previous version and upgrades them on save', async () => {
@@ -219,6 +237,7 @@ describe('IndexedDBRepository: two tabs', () => {
     await expect(repo.saveProject(project('a', 2))).rejects.toBeInstanceOf(SaveConflictError);
     await repo.getProject('a');
     await repo.saveProject(project('a', 3));
+    expect((await repo.listProjects()).map((m) => m.updatedAt)).toEqual([3]);
   });
 });
 

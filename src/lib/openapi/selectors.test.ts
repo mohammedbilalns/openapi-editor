@@ -26,16 +26,17 @@ describe('buildRouteTree', () => {
   })
 
   it('groups by defined tags, then unknown tags, then Untagged, repeating multi-tag routes', () => {
-    const tags: Tag[] = [{ name: 'store' }, { name: 'pets' }]
+    // Defined order (pets, store) differs from the order the sorted routes use them (store, pets).
+    const tags: Tag[] = [{ name: 'pets' }, { name: 'unused' }, { name: 'store' }]
     const rows = buildRouteTree(
       routes(route('/pets', 'get', ['pets', 'extra']), route('/orders', 'get', ['store']), route('/health', 'get')),
       tags,
     )
     expect(rows.map((row) => (row.kind === 'group' ? `[${row.label} ${row.count}]` : row.path))).toEqual([
-      '[store 1]',
-      '/orders',
       '[pets 1]',
       '/pets',
+      '[store 1]',
+      '/orders',
       '[extra 1]',
       '/pets',
       '[Untagged 1]',
@@ -85,9 +86,13 @@ describe('buildSchemaUsage', () => {
             },
           },
         ],
-        ['self', { name: 'self', required: false, schema: { kind: 'ref', targetId: pet.id } }],
+        ['pet', { name: 'pet', required: false, schema: { kind: 'ref', targetId: pet.id } }],
       ]),
     }
+    // a self reference is not a usage
+    wrapper.properties!.set('self', { name: 'self', required: false, schema: { kind: 'ref', targetId: wrapper.id } })
+    // refs outside properties/items/variants count too, as in the usage counts and the validator
+    const dict: SchemaNode = { ...createSchema('object', 'Dict'), additionalProperties: { kind: 'ref', targetId: pet.id } }
     const getPet = route('/pets/{id}', 'get')
     getPet.responses.set('200', {
       id: 'r',
@@ -100,11 +105,13 @@ describe('buildSchemaUsage', () => {
       content: new Map([['application/json', { schema: { kind: 'ref', targetId: pet.id } }]]),
     })
 
-    const usage = buildSchemaUsage(routes(getPet), schemas(pet, list, wrapper))
+    const usage = buildSchemaUsage(routes(getPet), schemas(pet, list, wrapper, dict))
     expect(usage.get(pet.id)).toEqual([
       { kind: 'route', id: getPet.id, label: 'GET /pets/{id}' },
       { kind: 'schema', id: list.id, label: 'PetList' },
       { kind: 'schema', id: wrapper.id, label: 'Wrapper' },
+      { kind: 'schema', id: dict.id, label: 'Dict' },
     ])
+    expect(usage.has(wrapper.id)).toBe(false)
   })
 })
