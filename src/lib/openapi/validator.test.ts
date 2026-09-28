@@ -162,7 +162,7 @@ describe('validateDocument', () => {
       const { doc, get } = cleanDoc();
       get.parameters = [{ ...get.parameters[0], in: 'query' }];
       const hits = find(validateDocument(doc), 'UNDEFINED_PATH_PARAM');
-      expect(hits.map((h) => h.message)).toEqual(['Path parameter {petId} is not defined']);
+      expect(hits.map((h) => h.message)).toEqual(['Path parameter {petId} is not defined.']);
     });
 
     it('NO_RESPONSES, NO_SUCCESS_RESPONSE, NO_ERROR_RESPONSE, SUCCESS_WITHOUT_BODY', () => {
@@ -199,10 +199,10 @@ describe('validateDocument', () => {
 
       const hits = find(validateDocument(doc), 'BROKEN_REFERENCE');
       expect(hits.map((h) => h.message).sort()).toEqual([
-        'Broken reference in Pet.friends[items]',
-        'Broken reference in get /pets/{petId} param q',
-        'Broken reference in get /pets/{petId} request body',
-        'Broken reference in get /pets/{petId} response 500',
+        'Broken reference in Pet.friends[items].',
+        'Broken reference in parameter “q” of GET /pets/{petId}.',
+        'Broken reference in the request body of GET /pets/{petId}.',
+        'Broken reference in the 500 response of GET /pets/{petId}.',
       ].sort());
       expect(hits.every((h) => h.severity === 'error')).toBe(true);
     });
@@ -242,6 +242,51 @@ describe('validateDocument', () => {
       use(doc, get, a);
       const flagged = find(validateDocument(doc), 'CIRCULAR_REFERENCE').map((h) => h.location.nodeId);
       expect(flagged.sort()).toEqual([a.id, b.id].sort());
+    });
+  });
+
+  describe('message style (DESIGN §11)', () => {
+    it('writes every message as a sentence: capitalised, full stop, curly quotes, uppercase methods', () => {
+      const doc = createEmptyDocument();
+      doc.info = { title: '', version: '' };
+      const lower = addSchema(doc, createSchema('object', 'pet'));
+      lower.required = ['ghost'];
+      addSchema(doc, createSchema('object', 'pet'));
+      const status = addSchema(doc, createSchema('enum', 'Status'));
+      status.enumValues = ['a', 'a'];
+      addSchema(doc, createSchema('enum', 'Empty'));
+      addSchema(doc, createSchema('array', 'List'));
+      const kind = addSchema(doc, createSchema('oneOf', 'Kind'));
+      kind.variants = [ref(status)];
+      const kinds = addSchema(doc, createSchema('oneOf', 'Kinds'));
+      kinds.variants = [ref(status), ref(kind)];
+      addSchema(doc, createSchema('anyOf', 'Nothing'));
+      const loop = addSchema(doc, createSchema('object', 'Loop'));
+      loop.properties!.set('self', { name: 'self', required: false, schema: ref(loop) });
+
+      const get = createRoute('/pets/{petId}', 'get');
+      get.operationId = 'Get-Pet';
+      get.parameters = [{ id: 'q', name: 'q', in: 'query', required: false, schema: { kind: 'ref', targetId: 'gone' } }];
+      get.responses = new Map([['200', { id: 'r', description: 'ok' }]]);
+      doc.routes.set(get.id, get);
+      const copy = createRoute('/pets/{petId}', 'get');
+      copy.operationId = 'Get-Pet';
+      doc.routes.set(copy.id, copy);
+      const post = createRoute('/pets', 'post');
+      post.responses = new Map();
+      doc.routes.set(post.id, post);
+
+      const messages = all(validateDocument(doc)).map((issue) => issue.message);
+      expect(new Set(codes(validateDocument(doc))).size).toBeGreaterThanOrEqual(20);
+      for (const message of messages) {
+        expect(message).toMatch(/^[A-Z“{]/);
+        expect(message).toMatch(/\.$/);
+        expect(message).not.toMatch(/["']/);
+        expect(message).not.toMatch(/\b(get|post|put|patch|delete|options|head) \//);
+      }
+      expect(messages).toContain('GET /pets/{petId} is defined more than once.');
+      expect(messages).toContain('Schema “Kinds” is not used anywhere.');
+      expect(messages).toContain('Schema “Loop” has a circular reference.');
     });
   });
 });

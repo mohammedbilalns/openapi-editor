@@ -19,6 +19,7 @@ import type {
   ValidationResult,
   ValidationSeverity,
 } from '../types'
+import { forEachMappingTarget } from '../refs'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -219,6 +220,7 @@ const ROUTE_FIELD_BY_CODE: Record<string, Located> = {
 
 const SCHEMA_FIELD_BY_CODE: Record<string, Located> = {
   DUPLICATE_SCHEMA_NAME: { field: 'name', location: 'name' },
+  UNNAMED_SCHEMA: { field: 'name', location: 'name' },
   SCHEMA_NAMING_CONVENTION: { field: 'name', location: 'name' },
   EMPTY_OBJECT: { field: 'fields', location: 'properties' },
   EMPTY_ENUM: { field: 'enum', location: 'enum' },
@@ -243,6 +245,11 @@ function brokenRefsInSchema(schema: SchemaNode, valid: Map<NodeId, unknown>): nu
   if (schema.properties) for (const prop of schema.properties.values()) count += brokenRefCount(prop.schema, valid)
   count += brokenRefCount(schema.items, valid)
   if (schema.variants) for (const variant of schema.variants) count += brokenRefCount(variant, valid)
+  count += brokenRefCount(schema.additionalProperties, valid)
+  count += brokenRefCount(schema.not, valid)
+  forEachMappingTarget(schema, (targetId) => {
+    if (!valid.has(targetId)) count += 1
+  })
   return count
 }
 
@@ -284,6 +291,11 @@ function schemaBrokenRefLocations(schema: SchemaNode, doc: ApiDocument): Located
       repeat(out, { field: 'variants', location: 'variants' }, brokenRefCount(variant, doc.schemas))
     }
   }
+  repeat(out, { location: 'additionalProperties' }, brokenRefCount(schema.additionalProperties, doc.schemas))
+  repeat(out, { location: 'not' }, brokenRefCount(schema.not, doc.schemas))
+  forEachMappingTarget(schema, (targetId) => {
+    if (!doc.schemas.has(targetId)) out.push({ field: 'discriminator', location: 'discriminator' })
+  })
   return out
 }
 
@@ -314,7 +326,7 @@ export function supplementaryChecks(doc: ApiDocument): ValidationError[] {
       if (param.in === 'path' && !inPath.has(param.name)) {
         out.push({
           code: 'EXTRA_PATH_PARAM',
-          message: `Path parameter {${param.name}} is not in the path`,
+          message: `Path parameter {${param.name}} is not in the path.`,
           severity: 'error',
           location: { nodeId: route.id, path: ['parameters', param.id] },
         })
@@ -325,7 +337,7 @@ export function supplementaryChecks(doc: ApiDocument): ValidationError[] {
     if (!server.url.trim()) {
       out.push({
         code: 'EMPTY_SERVER_URL',
-        message: `Server ${index + 1} has no URL`,
+        message: `Server ${index + 1} has no URL.`,
         severity: 'error',
         location: { path: ['servers'] },
       })
@@ -335,7 +347,7 @@ export function supplementaryChecks(doc: ApiDocument): ValidationError[] {
 }
 
 const SEVERITY_ORDER: Record<ValidationSeverity, number> = { error: 0, warning: 1, info: 2 }
-const METHOD_ORDER: readonly HttpMethod[] = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head']
+const METHOD_ORDER: readonly HttpMethod[] = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace']
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 
 function entityRank(entity: IssueEntity): number {
