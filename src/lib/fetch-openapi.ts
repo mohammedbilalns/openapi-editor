@@ -1,3 +1,5 @@
+import { MAX_DOCUMENT_CHARS } from './openapi/parser'
+
 export interface FetchOpenApiResult {
   content?: string
   error?: string
@@ -51,7 +53,17 @@ export async function fetchOpenApiFromUrl(
     return { error: `Failed to fetch: ${status}.` }
   }
 
+  const tooLarge = `The document is larger than ${MAX_DOCUMENT_CHARS / 1024 / 1024} MB, which is more than the editor can open.`
+  // Refuse before downloading when the server says how big it is
+  if (Number(response.headers.get('content-length')) > MAX_DOCUMENT_CHARS) {
+    response.body?.cancel().catch(() => {})
+    return { error: tooLarge }
+  }
+
   const content = await response.text()
+  if (content.length > MAX_DOCUMENT_CHARS) {
+    return { error: tooLarge }
+  }
   if (!content.trim()) {
     return { error: 'The URL returned empty content.' }
   }
