@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createEmptyDocument, type ApiDocument } from '../types'
 import type { SerializeResult } from './handler'
-import { createAnalysisClient, type Scheduler } from './client'
+import { createAnalysisClient, createWorkerParse, type Scheduler } from './client'
+import { createOpenApiWorkerClient } from '../worker-client'
+import { ClonedMessageWorker } from '@/test/fake-worker'
 
 /** A scheduler whose tasks run only when the test says so, in any order. */
 function manualScheduler() {
@@ -77,5 +79,35 @@ describe('analysis client', () => {
     const settled = await client.validate(doc)
     expect(settled.stale).toBe(false)
     expect(!settled.stale && settled.value.some((issue) => issue.code === 'MISSING_TITLE')).toBe(true)
+  })
+})
+
+describe('analysis client: import parsing in the worker', () => {
+  const SMALL = "openapi: 3.0.0\ninfo: {title: Small, version: '1'}\npaths: {}\n"
+
+  it('restarts a worker stuck on an older parse instead of queueing behind it; the older resolves stale', async () => {
+    const workers = [new ClonedMessageWorker({ batch: 100 }), new ClonedMessageWorker()]
+    let created = 0
+    const parse = createWorkerParse(() => createOpenApiWorkerClient(() => workers[created++]))
+    const client = createAnalysisClient({ parse })
+
+    const older = client.parse('openapi: 3.0.0 # imagine something slow')
+    const newer = client.parse(SMALL)
+    const settled = await newer
+    expect(settled.stale).toBe(false)
+    expect(!settled.stale && settled.value.document?.info.title).toBe('Small')
+    await expect(older).resolves.toEqual({ stale: true })
+    expect(workers[0].terminated).toBe(true)
+  })
+
+  it('reports a parse that takes too long as an error instead of waiting forever', async () => {
+    const worker = new ClonedMessageWorker({ batch: 100 })
+    const parse = createWorkerParse(() => createOpenApiWorkerClient(() => worker, { timeoutMs: 20 }))
+    const settled = await createAnalysisClient({ parse }).parse(SMALL)
+    expect(settled.stale).toBe(false)
+    if (settled.stale) return
+    expect(settled.value.document).toBeNull()
+    expect(settled.value.errors.map((e) => [e.code, e.severity])).toEqual([['PARSE_TIMEOUT', 'error']])
+    expect(worker.terminated).toBe(true)
   })
 })

@@ -13,7 +13,12 @@
  * skipped entirely if it hadn't started yet); callers drop it.
  */
 import type { ApiDocument } from '../types'
-import { createOpenApiWorkerClient, type OpenApiWorkerClient } from '../worker-client'
+import {
+  createOpenApiWorkerClient,
+  WorkerCancelledError,
+  WorkerTimeoutError,
+  type OpenApiWorkerClient,
+} from '../worker-client'
 import { parseText, serializeWithIndex, validateToIssues, type ParseOutcome, type SerializeResult } from './handler'
 import type { Issue } from './issues'
 
@@ -65,25 +70,59 @@ const mainThreadParse: ParseImplementation = (text) =>
     }),
   )
 
-let workerClient: OpenApiWorkerClient | null = null
+/** A parse still running after this long is stopped (the worker is terminated and replaced). */
+export const PARSE_TIMEOUT_MS = 60_000
 
 /**
- * Parses in the OpenAPI worker. Without `Worker` (jsdom) or if the worker
- * fails, parses on the main thread after a paint instead.
+ * Import parsing in an OpenAPI worker made by `createClient` (lazily).
+ *
+ * The worker handles one message at a time, so a newer parse would wait for
+ * an older one to finish; a slow or hostile document could hold it forever.
+ * Instead a newer parse restarts the worker: the older call rejects with
+ * WorkerCancelledError and the analysis client reports it as stale. A parse
+ * that times out (see the client's `timeoutMs`) comes back as a PARSE_TIMEOUT
+ * error. Any other worker failure falls back to parsing on the main thread.
  */
-const workerParse: ParseImplementation = async (text) => {
-  if (typeof Worker === 'undefined') return mainThreadParse(text)
-  try {
-    workerClient ??= createOpenApiWorkerClient()
-    const { document, errors } = await workerClient.parseYaml(text)
-    return { document, errors }
-  } catch (error) {
-    console.error('Parsing in the worker failed; parsing on the main thread.', error)
-    workerClient?.terminate()
-    workerClient = null
-    return mainThreadParse(text)
+export function createWorkerParse(createClient: () => OpenApiWorkerClient): ParseImplementation {
+  let client: OpenApiWorkerClient | null = null
+  let inFlight = 0
+  return async (text) => {
+    client ??= createClient()
+    if (inFlight > 0) client.cancelPending()
+    inFlight++
+    try {
+      const { document, errors } = await client.parseYaml(text)
+      return { document, errors }
+    } catch (error) {
+      if (error instanceof WorkerCancelledError) throw error
+      if (error instanceof WorkerTimeoutError) {
+        return {
+          document: null,
+          errors: [
+            {
+              code: 'PARSE_TIMEOUT',
+              message: 'Reading the document took too long, so it was stopped.',
+              severity: 'error',
+              location: {},
+            },
+          ],
+        }
+      }
+      console.error('Parsing in the worker failed; parsing on the main thread.', error)
+      client?.terminate()
+      client = null
+      return mainThreadParse(text)
+    } finally {
+      inFlight--
+    }
   }
 }
+
+const defaultWorkerParse = createWorkerParse(() => createOpenApiWorkerClient(undefined, { timeoutMs: PARSE_TIMEOUT_MS }))
+
+/** Parses in the OpenAPI worker; without `Worker` (jsdom), on the main thread after a paint. */
+const workerParse: ParseImplementation = (text) =>
+  typeof Worker === 'undefined' ? mainThreadParse(text) : defaultWorkerParse(text)
 
 export function createAnalysisClient(options: AnalysisClientOptions = {}): AnalysisClient {
   const schedule = options.schedule ?? idleScheduler
@@ -118,7 +157,14 @@ export function createAnalysisClient(options: AnalysisClientOptions = {}): Analy
     validate: (doc, channel = 'validate') => runScheduled(channel, () => validate(doc)),
     parse: async (text, channel = 'import') => {
       const isLatest = claim(channel)
-      const value = await (options.parse ?? parseImplementation)(text)
+      let value: ParseOutcome
+      try {
+        value = await (options.parse ?? parseImplementation)(text)
+      } catch (error) {
+        // e.g. cancelled because a newer parse restarted the worker
+        if (!isLatest()) return { stale: true }
+        throw error
+      }
       return isLatest() ? { stale: false, value } : { stale: true }
     },
   }

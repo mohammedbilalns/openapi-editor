@@ -25,8 +25,38 @@ export interface OpenApiWorkerClient {
   parseYaml(text: string): Promise<ParseResult>;
   serializeToYaml(doc: ApiDocument): Promise<string>;
   validateDocument(doc: ApiDocument): Promise<ValidationResult>;
+  /**
+   * Stop whatever the worker is doing: its pending calls reject with
+   * WorkerCancelledError and later calls go to a fresh worker. No-op when idle.
+   */
+  cancelPending(): void;
   /** Stop the worker; pending calls reject. */
   terminate(): void;
+}
+
+export interface WorkerClientOptions {
+  /**
+   * A call the worker hasn't answered after this long rejects with
+   * WorkerTimeoutError; the worker (stuck on it, e.g. on a hostile document)
+   * is terminated and replaced. Default: no timeout.
+   */
+  timeoutMs?: number;
+}
+
+/** The worker didn't answer within `timeoutMs`. */
+export class WorkerTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`The OpenAPI worker did not answer within ${Math.round(timeoutMs / 1000)} s.`);
+    this.name = 'WorkerTimeoutError';
+  }
+}
+
+/** The call was dropped because the worker was restarted (cancelPending, or another call timed out). */
+export class WorkerCancelledError extends Error {
+  constructor() {
+    super('The OpenAPI worker call was cancelled.');
+    this.name = 'WorkerCancelledError';
+  }
 }
 
 function defaultWorkerFactory(): WorkerLike | null {
@@ -35,39 +65,72 @@ function defaultWorkerFactory(): WorkerLike | null {
   return new Worker(new URL('./openapi.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike;
 }
 
+interface PendingCall {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
 /**
  * Create a client. Without Worker support (SSR, tests) it runs the same code
- * in-process, still returning promises.
+ * in-process, still returning promises (no timeouts: synchronous work can't
+ * be interrupted).
  */
-export function createOpenApiWorkerClient(createWorker: () => WorkerLike | null = defaultWorkerFactory): OpenApiWorkerClient {
-  const worker = createWorker();
-  const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+export function createOpenApiWorkerClient(
+  createWorker: () => WorkerLike | null = defaultWorkerFactory,
+  options: WorkerClientOptions = {},
+): OpenApiWorkerClient {
+  const pending = new Map<number, PendingCall>();
   let nextId = 1;
   let terminated = false;
 
-  const rejectAll = (error: Error) => {
-    for (const { reject } of pending.values()) reject(error);
-    pending.clear();
+  const settle = (id: number): PendingCall | undefined => {
+    const entry = pending.get(id);
+    if (!entry) return undefined;
+    pending.delete(id);
+    if (entry.timer !== undefined) clearTimeout(entry.timer);
+    return entry;
   };
 
-  if (worker) {
-    worker.addEventListener('message', (event) => {
+  const rejectAll = (error: () => Error) => {
+    for (const id of Array.from(pending.keys())) settle(id)?.reject(error());
+  };
+
+  const start = (): WorkerLike | null => {
+    const instance = createWorker();
+    if (!instance) return null;
+    instance.addEventListener('message', (event) => {
+      if (instance !== worker) return; // a reply from a worker that was replaced
       const response = event.data as WorkerResponse;
-      const call = pending.get(response.id);
-      if (!call) return;
-      pending.delete(response.id);
-      if (response.ok) call.resolve(response.result);
-      else call.reject(new Error(response.error));
+      const entry = settle(response.id);
+      if (!entry) return;
+      if (response.ok) entry.resolve(response.result);
+      else entry.reject(new Error(response.error));
     });
-    worker.addEventListener('error', (event) => {
-      rejectAll(new Error(`OpenAPI worker failed: ${event.message ?? 'unknown error'}`));
+    instance.addEventListener('error', (event) => {
+      if (instance !== worker) return;
+      rejectAll(() => new Error(`OpenAPI worker failed: ${event.message ?? 'unknown error'}`));
     });
-  }
+    return instance;
+  };
+
+  let worker = start();
+  const inProcess = worker === null;
+
+  /** Terminate the current worker (dropping its calls) and start a fresh one. */
+  const restart = (reason: () => Error) => {
+    const old = worker;
+    worker = null;
+    old?.terminate();
+    rejectAll(reason);
+    worker = start();
+  };
 
   function call<K extends WorkerOp>(op: K, input: WorkerOps[K]['input']): Promise<WorkerOps[K]['output']> {
     if (terminated) return Promise.reject(new Error('OpenAPI worker was terminated'));
     const request: WorkerRequest<K> = { id: nextId++, op, input };
-    if (!worker) {
+    const target = worker;
+    if (inProcess || !target) {
       return Promise.resolve().then(() => {
         const response = handleWorkerRequest(request);
         if (!response.ok) throw new Error(response.error);
@@ -75,8 +138,17 @@ export function createOpenApiWorkerClient(createWorker: () => WorkerLike | null 
       });
     }
     return new Promise((resolve, reject) => {
-      pending.set(request.id, { resolve: resolve as (value: unknown) => void, reject });
-      worker.postMessage(request);
+      const entry: PendingCall = { resolve: resolve as (value: unknown) => void, reject };
+      const { timeoutMs } = options;
+      if (timeoutMs !== undefined) {
+        entry.timer = setTimeout(() => {
+          if (!pending.has(request.id)) return;
+          settle(request.id)!.reject(new WorkerTimeoutError(timeoutMs));
+          restart(() => new WorkerCancelledError());
+        }, timeoutMs);
+      }
+      pending.set(request.id, entry);
+      target.postMessage(request);
     });
   }
 
@@ -84,10 +156,14 @@ export function createOpenApiWorkerClient(createWorker: () => WorkerLike | null 
     parseYaml: (text) => call('parse', text),
     serializeToYaml: (doc) => call('serialize', doc),
     validateDocument: (doc) => call('validate', doc),
+    cancelPending: () => {
+      if (terminated || inProcess || pending.size === 0) return;
+      restart(() => new WorkerCancelledError());
+    },
     terminate: () => {
       terminated = true;
       worker?.terminate();
-      rejectAll(new Error('OpenAPI worker was terminated'));
+      rejectAll(() => new Error('OpenAPI worker was terminated'));
     },
   };
 }

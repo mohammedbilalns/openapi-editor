@@ -1,43 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createOpenApiWorkerClient, type WorkerLike } from './worker-client';
-import { handleWorkerRequest, type WorkerRequest } from './worker-protocol';
+import { createOpenApiWorkerClient, WorkerCancelledError, WorkerTimeoutError } from './worker-client';
 import { serializeToYaml } from './serializer';
 import { REALISTIC_SPEC_YAML } from '@/test/fixtures/realistic-spec';
 import { expectRefTo, schema } from '@/test/helpers';
-
-/**
- * Stand-in for a real Worker: messages cross the boundary through
- * structuredClone exactly as with postMessage, and replies are delivered
- * asynchronously (optionally in reverse order) by the real protocol handler.
- */
-class ClonedMessageWorker implements WorkerLike {
-  private listeners: { message: ((e: { data: unknown }) => void)[]; error: ((e: { message?: string }) => void)[] } = { message: [], error: [] };
-  private queue: unknown[] = [];
-  terminated = false;
-  constructor(private options: { reverse?: boolean; batch?: number } = {}) {}
-
-  addEventListener(type: 'message' | 'error', listener: (e: never) => void) {
-    this.listeners[type].push(listener as never);
-  }
-  postMessage(message: unknown) {
-    const request = structuredClone(message) as WorkerRequest;
-    this.queue.push(structuredClone(handleWorkerRequest(request)));
-    if (this.queue.length >= (this.options.batch ?? 1)) this.flush();
-  }
-  private flush() {
-    const replies = this.options.reverse ? this.queue.reverse() : this.queue;
-    this.queue = [];
-    setTimeout(() => {
-      for (const data of replies) for (const l of this.listeners.message) l({ data });
-    });
-  }
-  crash(message: string) {
-    for (const l of this.listeners.error) l({ message });
-  }
-  terminate() {
-    this.terminated = true;
-  }
-}
+import { ClonedMessageWorker } from '@/test/fake-worker';
 
 describe('OpenAPI worker client', () => {
   it('parses in the worker and returns a usable document (Maps and refs survive the clone)', async () => {
@@ -89,5 +55,34 @@ describe('OpenAPI worker client', () => {
     const { document } = await client.parseYaml(REALISTIC_SPEC_YAML);
     expect(document?.routes.size).toBe(5);
     await expect(client.validateDocument({ routes: null } as never)).rejects.toThrow(/Cannot read properties/);
+  });
+
+  it('times out a call the worker never answers, then starts a fresh worker for the next call', async () => {
+    const workers = [new ClonedMessageWorker({ batch: 100 }), new ClonedMessageWorker()];
+    let created = 0;
+    const client = createOpenApiWorkerClient(() => workers[created++], { timeoutMs: 30 });
+    const stuck = client.parseYaml('openapi: 3.0.0');
+    const queued = client.validateDocument({ routes: null } as never);
+    await expect(stuck).rejects.toBeInstanceOf(WorkerTimeoutError);
+    await expect(queued).rejects.toBeInstanceOf(WorkerCancelledError); // lost with the stuck worker
+    expect(workers[0].terminated).toBe(true);
+
+    const { document } = await client.parseYaml("openapi: 3.0.0\ninfo: {title: T, version: '1'}\npaths: {}");
+    expect(document?.info.title).toBe('T');
+    expect(created).toBe(2);
+  });
+
+  it('cancelPending terminates a busy worker and rejects its calls; later calls use a new one', async () => {
+    const workers = [new ClonedMessageWorker({ batch: 100 }), new ClonedMessageWorker()];
+    let created = 0;
+    const client = createOpenApiWorkerClient(() => workers[created++]);
+    client.cancelPending(); // idle: nothing to cancel, the worker is kept
+    expect(workers[0].terminated).toBe(false);
+
+    const busy = client.parseYaml('openapi: 3.0.0');
+    client.cancelPending();
+    await expect(busy).rejects.toBeInstanceOf(WorkerCancelledError);
+    expect(workers[0].terminated).toBe(true);
+    expect((await client.parseYaml("openapi: 3.0.0\ninfo: {title: U, version: '1'}\npaths: {}")).document?.info.title).toBe('U');
   });
 });
