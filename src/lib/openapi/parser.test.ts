@@ -63,7 +63,9 @@ describe('parseYaml: realistic spec', () => {
 
     const owner = inline(newPet.properties!.get('owner')!.schema);
     expect(owner.type).toBe('object');
-    expect(owner.description).toBe('Inline owner');
+    // an inline field schema's description is stored once, on the field
+    expect(newPet.properties!.get('owner')!.description).toBe('Inline owner');
+    expect(owner.description).toBeUndefined();
     expect(inline(owner.properties!.get('email')!.schema).format).toBe('email');
   });
 

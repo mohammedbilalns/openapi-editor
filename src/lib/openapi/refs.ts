@@ -27,6 +27,22 @@ export function forEachRefInSchema(schema: SchemaNode, visit: Visit): void {
   if (schema.variants) {
     for (const v of schema.variants) forEachRefInSchemaOrRef(v, visit);
   }
+  if (schema.additionalProperties) forEachRefInSchemaOrRef(schema.additionalProperties, visit);
+  if (schema.not) forEachRefInSchemaOrRef(schema.not, visit);
+  forEachMappingTarget(schema, visit);
+}
+
+/**
+ * Targets of the schema's discriminator mapping values that were resolved at
+ * import (and whose text is still in the mapping).
+ */
+export function forEachMappingTarget(schema: SchemaNode, visit: Visit): void {
+  const targets = schema.mappingTargets;
+  const mapping = schema.discriminator?.mapping;
+  if (!targets || !mapping) return;
+  for (const value of Object.values(mapping)) {
+    if (typeof value === 'string' && Object.hasOwn(targets, value)) visit(targets[value]);
+  }
 }
 
 export function forEachRefInRoute(route: Route, visit: Visit): void {

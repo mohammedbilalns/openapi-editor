@@ -1,10 +1,14 @@
+import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
 import * as YAML from 'yaml';
 import * as jsyaml from 'js-yaml';
-import { serializeDocument, serializeToYaml } from './serializer';
+import { serializeDocument, serializeToYaml, stringifyYaml } from './serializer';
 import { createEmptyDocument, createRoute, createSchema, type ApiDocument, type SchemaNode } from './types';
 import { REALISTIC_SPEC_YAML } from '@/test/fixtures/realistic-spec';
+import { LOSSLESS_SPEC_YAML } from '@/test/fixtures/lossless-spec';
 import { parseOk, route, schema } from '@/test/helpers';
+import { IndexedDBRepository } from '@/lib/storage/repository';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -38,8 +42,7 @@ describe('serializeToYaml: realistic spec round trip', () => {
 
   it('is lossless apart from documented normalisations', () => {
     // Normalisations: version pinned to 3.0.3, components.parameters/responses
-    // inlined where used, path-level parameters copied into each operation,
-    // parameters' `required: false` omitted.
+    // inlined where used, path-level parameters copied into each operation.
     const expected = structuredClone(original);
     expected.openapi = '3.0.3';
     const errorResponse = expected.components.responses.Error;
@@ -50,7 +53,7 @@ describe('serializeToYaml: realistic spec round trip', () => {
     expected.paths['/pets/{petId}'].get.parameters = petParams;
     expected.paths['/pets/{petId}'].delete.parameters = petParams;
     expected.paths['/pets/{petId}'].get.responses['404'] = errorResponse;
-    expected.paths['/pets'].get.parameters[2] = { name: 'X-Trace-Id', in: 'header', schema: { type: 'string' } };
+    expected.paths['/pets'].get.parameters[2] = { name: 'X-Trace-Id', in: 'header', required: false, schema: { type: 'string' } };
     expected.paths['/pets'].get.responses.default = errorResponse;
     expected.paths['/pets'].post.responses['400'] = errorResponse;
     expect(out).toEqual(expected);
@@ -81,7 +84,7 @@ describe('serializeToYaml: realistic spec round trip', () => {
     const pathParam = original.paths['/pets/{petId}'].parameters[0];
     expect(out.paths['/pets/{petId}'].get.parameters).toEqual([pathParam]);
     expect(out.paths['/pets/{petId}'].delete.parameters).toEqual([pathParam]);
-    expect(out.paths['/pets'].get.parameters[2]).toEqual({ name: 'X-Trace-Id', in: 'header', schema: { type: 'string' } });
+    expect(out.paths['/pets'].get.parameters[2]).toEqual({ name: 'X-Trace-Id', in: 'header', required: false, schema: { type: 'string' } });
   });
 
   it('keeps component responses (inlined) and response headers', () => {
@@ -286,5 +289,96 @@ components:
     const kind = schema(again, 'NewPet').properties!.get('kind')!.schema;
     expect(kind.kind === 'ref' && again.schemas.get(kind.targetId)?.name).toBe('PetKind');
     expect(route(again, 'post', '/pets').requestBody?.required).toBe(true);
+  });
+});
+
+describe('serializeToYaml: lossless round trip of everything the editor does not edit', () => {
+  const original: Json = YAML.parse(LOSSLESS_SPEC_YAML);
+  const { doc, errors } = parseOk(LOSSLESS_SPEC_YAML);
+  const out = exported(doc);
+
+  it('imports without warnings', () => {
+    expect(errors).toEqual([]);
+  });
+
+  it('exports exactly what was imported (only the version is pinned to 3.0.3)', () => {
+    expect(out).toEqual({ ...original, openapi: '3.0.3' });
+  });
+
+  it('keeps extensions, externalDocs, links, callbacks, examples and encoding', () => {
+    expect(out['x-root-ext']).toEqual({ owner: 'platform' });
+    expect(out.externalDocs).toEqual(original.externalDocs);
+    expect(out.info['x-logo']).toEqual(original.info['x-logo']);
+    expect(out.paths['/pets']['x-path-ext']).toBe(1);
+    expect(out.paths['/pets'].summary).toBe('Pets collection');
+    expect(out.paths['/pets'].get.responses['200'].links).toEqual(original.paths['/pets'].get.responses['200'].links);
+    expect(out.paths['/pets'].post.callbacks).toEqual(original.paths['/pets'].post.callbacks);
+    expect(out.components.examples).toEqual(original.components.examples);
+    expect(out.components['x-components-ext']).toBe(1);
+  });
+
+  it('keeps TRACE operations, parameter style/explode/content and media types without a schema', () => {
+    expect(out.paths['/pets'].trace).toEqual(original.paths['/pets'].trace);
+    expect(out.paths['/pets'].get.parameters).toEqual(original.paths['/pets'].get.parameters);
+    expect(out.paths['/pets'].get.responses['200'].content['application/pdf']).toEqual({});
+  });
+
+  it('keeps untyped schemas, keywords next to compositions and constraints on every kind', () => {
+    for (const name of ['Any', 'Untyped', 'UntypedArray', 'UntypedEnum', 'Pet', 'Code', 'Tags', 'Dict', 'NotPet', 'Mixed']) {
+      expect(out.components.schemas[name], name).toEqual(original.components.schemas[name]);
+    }
+  });
+
+  it('emits the same text incrementally as in one pass', () => {
+    expect(serializeToYaml(doc)).toBe(stringifyYaml(serializeDocument(doc)));
+  });
+
+  it('is a fixpoint', () => {
+    const first = serializeToYaml(doc);
+    expect(serializeToYaml(parseOk(first).doc)).toBe(first);
+  });
+
+  it('keeps everything through a save to and load from IndexedDB', async () => {
+    globalThis.indexedDB = new IDBFactory();
+    const metadata = { id: 'p', name: 'P', createdAt: 1, updatedAt: 1 };
+    await new IndexedDBRepository().saveProject({ metadata, document: doc });
+    const loaded = await new IndexedDBRepository().getProject('p');
+    expect(serializeToYaml(loaded!.document)).toBe(serializeToYaml(doc));
+  });
+
+  it('keeps OpenAPI 3.1 multi-type schemas (type lists)', () => {
+    const multi = parseOk(`
+openapi: 3.0.3
+info: {title: T, version: '1'}
+paths: {}
+components:
+  schemas:
+    Multi: {type: [string, integer]}
+    NullableMulti: {type: [string, integer, 'null']}
+`);
+    const schemas = exported(multi.doc).components.schemas;
+    expect(schemas.Multi).toEqual({ type: ['string', 'integer'] });
+    expect(schemas.NullableMulti).toEqual({ type: ['string', 'integer'], nullable: true });
+    expect(multi.errors.map((e) => e.code)).toEqual(['MULTIPLE_TYPES', 'MULTIPLE_TYPES']);
+  });
+
+  it('warns about what it cannot keep instead of dropping it silently', () => {
+    const { errors: warnings } = parseOk(`
+openapi: 3.0.3
+info: {title: T, version: '1'}
+paths:
+  /empty:
+    x-only: true
+  /a:
+    get:
+      parameters:
+        - $ref: '#/components/parameters/Used'
+      responses: {'200': {description: ok}}
+components:
+  parameters:
+    Used: {name: q, in: query, schema: {type: string}}
+    Unused: {name: u, in: query, schema: {type: string}}
+`);
+    expect(warnings.map((e) => e.code).toSorted()).toEqual(['COMPONENT_NOT_KEPT', 'PATH_WITHOUT_OPERATIONS']);
   });
 });

@@ -75,6 +75,8 @@ export function serializeRoute(route: Route): SerializedRoute {
     ]),
     security: route.security,
     deprecated: route.deprecated,
+    extra: route.extra,
+    pathExtra: route.pathExtra,
   };
 }
 
@@ -97,6 +99,8 @@ export function deserializeRoute(serialized: SerializedRoute): Route {
     ),
     security: serialized.security as Route['security'],
     deprecated: serialized.deprecated,
+    extra: serialized.extra,
+    pathExtra: serialized.pathExtra,
   };
 }
 
@@ -140,6 +144,7 @@ export function serializeDocument(doc: ApiDocument): SerializedApiDocument {
     securitySchemes: Array.from(doc.securitySchemes.entries()),
     tags: doc.tags,
     security: doc.security,
+    extra: doc.extra,
   };
 }
 
@@ -161,6 +166,7 @@ export function deserializeDocument(serialized: SerializedApiDocument): ApiDocum
     securitySchemes: new Map(serialized.securitySchemes as [string, SecurityScheme][]),
     tags: serialized.tags,
     security: serialized.security,
+    extra: serialized.extra,
   };
 }
 

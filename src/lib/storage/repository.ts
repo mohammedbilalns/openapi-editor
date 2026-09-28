@@ -168,6 +168,7 @@ export class IndexedDBRepository implements IProjectRepository {
       securitySchemes: new Map(header.securitySchemes as [string, SecurityScheme][]),
       tags: header.tags,
       security: header.security,
+      extra: header.extra,
     };
     this.lastSaved.set(id, document);
     return { metadata: record.metadata, document };
@@ -236,6 +237,7 @@ export class IndexedDBRepository implements IProjectRepository {
         servers: doc.servers,
         tags: doc.tags,
         security: doc.security,
+        extra: doc.extra,
         securitySchemes: Array.from(doc.securitySchemes.entries()),
         routeIds: Array.from(doc.routes.keys()),
         schemaIds: Array.from(doc.schemas.keys()),

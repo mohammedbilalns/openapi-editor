@@ -41,6 +41,7 @@ export interface SerializedApiDocument {
   securitySchemes: [string, SecurityScheme][];
   tags: ApiDocument["tags"];
   security?: ApiDocument["security"];
+  extra?: ApiDocument["extra"];
 }
 
 /**
@@ -59,6 +60,8 @@ export interface SerializedRoute {
   responses: [string, unknown][];
   security?: unknown[];
   deprecated?: boolean;
+  extra?: Record<string, unknown>;
+  pathExtra?: Record<string, unknown>;
 }
 
 /**
@@ -102,6 +105,7 @@ export interface ProjectRecordV2 {
     servers: ApiDocument["servers"];
     tags: ApiDocument["tags"];
     security?: ApiDocument["security"];
+    extra?: ApiDocument["extra"];
     securitySchemes: [string, unknown][];
     /** document order of the route / schema records */
     routeIds: string[];

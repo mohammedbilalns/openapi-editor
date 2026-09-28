@@ -1,4 +1,4 @@
-import { dump as dumpYaml } from 'js-yaml';
+import { DEFAULT_SCHEMA, Type, dump as dumpYaml } from 'js-yaml';
 import {
   ApiDocument,
   SchemaNode,
@@ -7,45 +7,30 @@ import {
   ParameterDef,
   ResponseDef,
   RequestBody,
+  MediaType,
   SecurityRequirement,
   SecurityScheme,
   NodeId,
+  ExtraFields,
+  setOwn,
 } from './types';
 import { forEachRefInRoute, forEachRefInSchema } from './refs';
+
+type Json = Record<string, unknown>;
 
 // OpenAPI output types
 interface OpenAPIDocument {
   openapi: string;
-  info: {
-    title: string;
-    version: string;
-    description?: string;
-    termsOfService?: string;
-    contact?: {
-      name?: string;
-      url?: string;
-      email?: string;
-    };
-    license?: {
-      name: string;
-      url?: string;
-    };
+  info: Json & { title: string; version: string };
+  servers?: Json[];
+  paths: Record<string, Json>;
+  components?: Json & {
+    schemas?: Json;
+    securitySchemes?: Json;
   };
-  servers?: Array<{
-    url: string;
-    description?: string;
-    variables?: Record<string, unknown>;
-  }>;
-  paths: Record<string, Record<string, unknown>>;
-  components?: {
-    schemas?: Record<string, unknown>;
-    securitySchemes?: Record<string, unknown>;
-  };
-  tags?: Array<{
-    name: string;
-    description?: string;
-  }>;
+  tags?: Json[];
   security?: Array<Record<string, string[]>>;
+  [key: string]: unknown;
 }
 
 /**
@@ -62,20 +47,66 @@ export function serializeToYaml(doc: ApiDocument): string {
 }
 
 /**
+ * Plain strings a YAML 1.1 reader takes for numbers because of `_` digit
+ * separators (`1_000`, `0x_1F`, `1_0.5`). js-yaml's YAML 1.2 schema doesn't,
+ * so they would be written unquoted; this type only exists to make the dumper
+ * quote them.
+ */
+const YAML11_UNDERSCORE_NUMBER = new Type('tag:yaml.org,2002:yaml11-underscore-number', {
+  kind: 'scalar',
+  resolve: (text: string) =>
+    typeof text === 'string' &&
+    text.includes('_') &&
+    /^[-+]?(?:0b[01_]+|0x[0-9a-fA-F_]+|[0-9][0-9_]*(?::[0-5]?[0-9])*(?:\.[0-9_]*)?(?:[eE][-+]?[0-9]+)?|\.[0-9_]+(?:[eE][-+]?[0-9]+)?)$/.test(text),
+});
+const DUMP_SCHEMA = DEFAULT_SCHEMA.extend({ implicit: [YAML11_UNDERSCORE_NUMBER] });
+
+/**
  * Plain OpenAPI object -> YAML text (js-yaml, ~5x faster than the `yaml`
  * package on large specs).
  * - noRefs: shared objects are written out in full, never as &anchor/*alias;
- * - default schema on output so strings a YAML 1.1 reader would retype
- *   (2024-06-20, yes, on, 1e3...) are quoted for every consumer;
+ * - default schema (plus 1.1 underscore numbers) on output so strings a YAML
+ *   1.1 reader would retype (2024-06-20, yes, on, 1e3, 1_000...) are quoted
+ *   for every consumer;
  * - lineWidth -1: no folding of long descriptions;
  * - skipInvalid: undefined values are omitted instead of throwing.
  */
 export function stringifyYaml(value: unknown): string {
-  return dumpYaml(value, { indent: 2, lineWidth: -1, noRefs: true, quotingType: '"', skipInvalid: true });
+  return dumpYaml(value, { indent: 2, lineWidth: -1, noRefs: true, quotingType: '"', skipInvalid: true, schema: DUMP_SCHEMA });
 }
 
 export function serializeDocument(doc: ApiDocument): OpenAPIDocument {
   return buildDocument(doc, false);
+}
+
+/** Copy the extra (unmodelled) fields into `target`, never overriding what the model wrote. */
+function addExtra(target: Json, extra: ExtraFields | undefined): void {
+  if (!extra) return;
+  for (const key of Object.keys(extra)) {
+    if (!Object.hasOwn(target, key)) setOwn(target, key, extra[key]);
+  }
+}
+
+/**
+ * Add the entries of `extra[key]` that `container` lacks: an extra-bag entry
+ * named like a modelled container (`components`, `paths`, `responses`) holds
+ * that container's unmodelled entries.
+ */
+function mergeExtraEntries(container: Json, extra: ExtraFields | undefined, key: string): void {
+  const entries = extra && Object.hasOwn(extra, key) ? extra[key] : undefined;
+  if (entries !== null && typeof entries === 'object' && !Array.isArray(entries)) addExtra(container, entries as ExtraFields);
+}
+
+function withoutKeys(extra: ExtraFields | undefined, keys: readonly string[]): ExtraFields | undefined {
+  if (!extra || !keys.some((k) => Object.hasOwn(extra, k))) return extra;
+  const copy: ExtraFields = {};
+  for (const key of Object.keys(extra)) if (!keys.includes(key)) setOwn(copy, key, extra[key]);
+  return copy;
+}
+
+/** `#/components/schemas/<name>`, escaping `~` and `/` as JSON pointer requires. */
+function schemaRefText(name: string): string {
+  return `#/components/schemas/${name.replace(/~/g, '~0').replace(/\//g, '~1')}`;
 }
 
 /**
@@ -93,65 +124,81 @@ function buildDocument(doc: ApiDocument, shell: boolean): OpenAPIDocument {
   };
 
   // Info
-  if (doc.info.description) {
-    output.info.description = doc.info.description;
+  const { info } = doc;
+  if (info.description) {
+    output.info.description = info.description;
   }
-  if (doc.info.termsOfService) {
-    output.info.termsOfService = doc.info.termsOfService;
+  if (info.termsOfService) {
+    output.info.termsOfService = info.termsOfService;
   }
-  if (doc.info.contact && (doc.info.contact.name || doc.info.contact.email || doc.info.contact.url)) {
-    output.info.contact = {};
-    if (doc.info.contact.name) output.info.contact.name = doc.info.contact.name;
-    if (doc.info.contact.email) output.info.contact.email = doc.info.contact.email;
-    if (doc.info.contact.url) output.info.contact.url = doc.info.contact.url;
+  if (info.contact && (info.contact.name || info.contact.email || info.contact.url || info.contact.extra)) {
+    const contact: Json = {};
+    if (info.contact.name) contact.name = info.contact.name;
+    if (info.contact.email) contact.email = info.contact.email;
+    if (info.contact.url) contact.url = info.contact.url;
+    addExtra(contact, info.contact.extra);
+    output.info.contact = contact;
   }
-  if (doc.info.license?.name) {
-    output.info.license = { name: doc.info.license.name };
-    if (doc.info.license.url) output.info.license.url = doc.info.license.url;
+  if (info.license?.name) {
+    const license: Json = { name: info.license.name };
+    if (info.license.url) license.url = info.license.url;
+    addExtra(license, info.license.extra);
+    output.info.license = license;
   }
+  addExtra(output.info, info.extra);
 
   // Servers
   if (doc.servers.length > 0) {
-    output.servers = doc.servers.map((s) => ({
-      url: s.url,
-      ...(s.description && { description: s.description }),
-      ...(s.variables && Object.keys(s.variables).length > 0 && { variables: s.variables }),
-    }));
+    output.servers = doc.servers.map((s) => {
+      const server: Json = { url: s.url };
+      if (s.description) server.description = s.description;
+      if (s.variables && Object.keys(s.variables).length > 0) {
+        const variables: Json = {};
+        for (const [name, v] of Object.entries(s.variables)) {
+          const variable: Json = { default: v.default };
+          if (v.enum !== undefined) variable.enum = v.enum;
+          if (v.description !== undefined) variable.description = v.description;
+          addExtra(variable, v.extra);
+          setOwn(variables, name, variable);
+        }
+        server.variables = variables;
+      }
+      addExtra(server, s.extra);
+      return server;
+    });
   }
 
   // Tags
   if (doc.tags.length > 0) {
-    output.tags = doc.tags.map((t) => ({
-      name: t.name,
-      ...(t.description && { description: t.description }),
-    }));
+    output.tags = doc.tags.map((t) => {
+      const tag: Json = { name: t.name };
+      if (t.description) tag.description = t.description;
+      addExtra(tag, t.extra);
+      return tag;
+    });
   }
 
   // Components
-  const schemas: Record<string, unknown> = {};
-  const securitySchemes: Record<string, unknown> = {};
+  const schemas: Json = {};
+  const securitySchemes: Json = {};
 
   // Serialize named schemas
-  for (const [id, schema] of doc.schemas) {
+  for (const schema of doc.schemas.values()) {
     if (schema.name) {
-      schemas[schema.name] = shell ? schema : serializeSchema(schema, doc);
+      setOwn(schemas, schema.name, shell ? schema : serializeSchema(schema, doc));
     }
   }
 
   // Serialize security schemes
-  for (const [id, scheme] of doc.securitySchemes) {
-    securitySchemes[scheme.name] = serializeSecurityScheme(scheme);
+  for (const scheme of doc.securitySchemes.values()) {
+    setOwn(securitySchemes, scheme.name, serializeSecurityScheme(scheme));
   }
 
-  if (Object.keys(schemas).length > 0 || Object.keys(securitySchemes).length > 0) {
-    output.components = {};
-    if (Object.keys(schemas).length > 0) {
-      output.components.schemas = schemas;
-    }
-    if (Object.keys(securitySchemes).length > 0) {
-      output.components.securitySchemes = securitySchemes;
-    }
-  }
+  const components: Json = {};
+  if (Object.keys(schemas).length > 0) components.schemas = schemas;
+  if (Object.keys(securitySchemes).length > 0) components.securitySchemes = securitySchemes;
+  mergeExtraEntries(components, doc.extra, 'components');
+  if (Object.keys(components).length > 0) output.components = components;
 
   const rootSecurity = serializeSecurity(doc.security, doc);
   if (rootSecurity) {
@@ -170,11 +217,17 @@ function buildDocument(doc: ApiDocument, shell: boolean): OpenAPIDocument {
   const sortedPaths = Array.from(pathGroups.keys()).sort();
   for (const path of sortedPaths) {
     const routes = pathGroups.get(path)!;
-    output.paths[path] = {};
+    const item: Json = {};
+    // path-item fields first (summary, description, servers, x-*), as usually written
+    for (const route of routes) addExtra(item, route.pathExtra);
     for (const route of routes) {
-      output.paths[path][route.method] = shell ? route : serializeOperation(route, doc);
+      setOwn(item, route.method, shell ? route : serializeOperation(route, doc));
     }
+    setOwn(output.paths, path, item);
   }
+  mergeExtraEntries(output.paths, doc.extra, 'paths');
+
+  addExtra(output, withoutKeys(doc.extra, ['components', 'paths']));
 
   return output;
 }
@@ -189,92 +242,146 @@ function inferEnumType(values: unknown[] | undefined): NonNullable<SchemaNode['e
   return 'string';
 }
 
-function serializeSchema(schema: SchemaNode, doc: ApiDocument): Record<string, unknown> {
+function serializeProperties(schema: SchemaNode, doc: ApiDocument): Json {
+  const props: Json = {};
+  for (const [name, prop] of schema.properties!) {
+    let propSchema: Json;
+    if (prop.schema.kind === 'inline') {
+      // the field's description, where the schema's own would go
+      propSchema = serializeSchema(prop.schema.schema, doc, prop.description || undefined);
+    } else {
+      propSchema = serializeSchemaOrRef(prop.schema, doc);
+      if (prop.description) propSchema.description = prop.description;
+    }
+    if (name === '__proto__') setOwn(props, name, propSchema);
+    else props[name] = propSchema;
+  }
+  return props;
+}
+
+function serializeDiscriminator(schema: SchemaNode, doc: ApiDocument): Json | undefined {
+  const { discriminator } = schema;
+  if (!discriminator?.propertyName) return undefined;
+  const result: Json = { propertyName: discriminator.propertyName };
+  if (discriminator.mapping && Object.keys(discriminator.mapping).length > 0) {
+    const targets = schema.mappingTargets;
+    const mapping: Json = {};
+    for (const [key, value] of Object.entries(discriminator.mapping)) {
+      // a mapping value resolved at import follows its target's renames
+      const targetId = targets && typeof value === 'string' && Object.hasOwn(targets, value) ? targets[value] : undefined;
+      const targetName = targetId === undefined ? undefined : doc.schemas.get(targetId)?.name;
+      setOwn(mapping, key, targetName ? (value.startsWith('#') ? schemaRefText(targetName) : targetName) : value);
+    }
+    result.mapping = mapping;
+  }
+  return result;
+}
+
+/** `description` (when given) replaces the schema's own, e.g. an object property's description. */
+function serializeSchema(schema: SchemaNode, doc: ApiDocument, description = schema.description): Json {
   // An unresolved reference imported verbatim (e.g. to an external file)
   if (schema.extraKeywords && typeof schema.extraKeywords.$ref === 'string') {
-    return { ...schema.extraKeywords };
+    const verbatim: Json = { ...schema.extraKeywords };
+    if (description) verbatim.description = description;
+    return verbatim;
   }
 
-  const result: Record<string, unknown> = {};
+  const result: Json = {};
 
   if (schema.type === 'oneOf' || schema.type === 'anyOf' || schema.type === 'allOf') {
     // Composition types
     if (schema.variants && schema.variants.length > 0) {
       result[schema.type] = schema.variants.map((v) => serializeSchemaOrRef(v, doc));
     }
-    if (schema.discriminator?.propertyName) {
-      const discriminator: Record<string, unknown> = { propertyName: schema.discriminator.propertyName };
-      if (schema.discriminator.mapping && Object.keys(schema.discriminator.mapping).length > 0) {
-        discriminator.mapping = schema.discriminator.mapping;
-      }
+    const discriminator = serializeDiscriminator(schema, doc);
+    if (discriminator) {
       result.discriminator = discriminator;
     }
-    if (schema.description) {
-      result.description = schema.description;
+    if (description) {
+      result.description = description;
     }
   } else if (schema.type === 'enum') {
-    result.type = schema.enumType ?? inferEnumType(schema.enumValues);
+    if (!schema.untyped) {
+      result.type = schema.enumType ?? inferEnumType(schema.enumValues);
+    }
     if (schema.format) {
       result.format = schema.format;
     }
     if (schema.enumValues && schema.enumValues.length > 0) {
       result.enum = schema.enumValues;
     }
-    if (schema.description) {
-      result.description = schema.description;
+    if (description) {
+      result.description = description;
     }
   } else if (schema.type === 'array') {
-    result.type = 'array';
+    if (!schema.untyped) result.type = 'array';
     if (schema.items) {
       result.items = serializeSchemaOrRef(schema.items, doc);
     }
-    if (schema.description) {
-      result.description = schema.description;
+    if (description) {
+      result.description = description;
     }
   } else if (schema.type === 'object') {
-    result.type = 'object';
+    if (!schema.untyped) result.type = 'object';
     if (schema.properties && schema.properties.size > 0) {
-      const props: Record<string, unknown> = {};
-      for (const [name, prop] of schema.properties) {
-        const propSchema = serializeSchemaOrRef(prop.schema, doc);
-        if (prop.description) {
-          propSchema.description = prop.description;
-        }
-        props[name] = propSchema;
-      }
-      result.properties = props;
+      result.properties = serializeProperties(schema, doc);
     }
     if (schema.required && schema.required.length > 0) {
       result.required = schema.required;
     }
-    if (schema.description) {
-      result.description = schema.description;
+    if (description) {
+      result.description = description;
     }
   } else {
     // Primitives
     result.type = schema.type;
-    if (schema.description) {
-      result.description = schema.description;
+    if (description) {
+      result.description = description;
     }
     if (schema.format) {
       result.format = schema.format;
     }
-    if (schema.minimum !== undefined) {
-      result.minimum = schema.minimum;
-    }
-    if (schema.maximum !== undefined) {
-      result.maximum = schema.maximum;
-    }
-    if (schema.minLength !== undefined) {
-      result.minLength = schema.minLength;
-    }
-    if (schema.maxLength !== undefined) {
-      result.maxLength = schema.maxLength;
-    }
+    if (schema.minimum !== undefined) result.minimum = schema.minimum;
+    if (schema.maximum !== undefined) result.maximum = schema.maximum;
+    if (schema.minLength !== undefined) result.minLength = schema.minLength;
+    if (schema.maxLength !== undefined) result.maxLength = schema.maxLength;
     if (schema.pattern) {
       result.pattern = schema.pattern;
     }
   }
+
+  // An OpenAPI 3.1 type list, while the edited type is still one of its entries
+  if (schema.typeList !== undefined && typeof result.type === 'string' && schema.typeList.includes(result.type)) {
+    result.type = [...schema.typeList];
+  }
+
+  // Modelled keywords valid on every kind of schema (a schema may combine
+  // them, e.g. allOf next to properties, or maxLength on an enum)
+  if (schema.properties !== undefined && schema.properties.size > 0 && result.properties === undefined) {
+    result.properties = serializeProperties(schema, doc);
+  }
+  if (schema.required !== undefined && schema.required.length > 0 && result.required === undefined) {
+    result.required = schema.required;
+  }
+  if (schema.items !== undefined && result.items === undefined) {
+    result.items = serializeSchemaOrRef(schema.items, doc);
+  }
+  if (schema.additionalProperties !== undefined) {
+    result.additionalProperties = serializeSchemaOrRef(schema.additionalProperties, doc);
+  }
+  if (schema.not !== undefined) {
+    result.not = serializeSchemaOrRef(schema.not, doc);
+  }
+  if (schema.discriminator !== undefined && result.discriminator === undefined) {
+    const discriminator = serializeDiscriminator(schema, doc);
+    if (discriminator) result.discriminator = discriminator;
+  }
+  if (schema.format && result.format === undefined) result.format = schema.format;
+  if (schema.minimum !== undefined && result.minimum === undefined) result.minimum = schema.minimum;
+  if (schema.maximum !== undefined && result.maximum === undefined) result.maximum = schema.maximum;
+  if (schema.minLength !== undefined && result.minLength === undefined) result.minLength = schema.minLength;
+  if (schema.maxLength !== undefined && result.maxLength === undefined) result.maxLength = schema.maxLength;
+  if (schema.pattern && result.pattern === undefined) result.pattern = schema.pattern;
 
   // Keywords valid for every schema kind
   if (schema.nullable) {
@@ -286,32 +393,39 @@ function serializeSchema(schema: SchemaNode, doc: ApiDocument): Record<string, u
   if (schema.default !== undefined) {
     result.default = schema.default;
   }
-  if (schema.extraKeywords) {
-    for (const [key, value] of Object.entries(schema.extraKeywords)) {
-      if (!(key in result)) result[key] = value;
-    }
-  }
+  if (schema.extraKeywords !== undefined) addExtra(result, schema.extraKeywords);
 
   return result;
 }
 
-function serializeSchemaOrRef(schemaOrRef: SchemaOrRef, doc: ApiDocument): Record<string, unknown> {
+/** Unnamed schemas being inlined right now (guards against cycles through them). */
+const inlining = new Set<NodeId>();
+
+function serializeSchemaOrRef(schemaOrRef: SchemaOrRef, doc: ApiDocument): Json {
   if (schemaOrRef.kind === 'ref') {
     const targetSchema = doc.schemas.get(schemaOrRef.targetId);
     if (targetSchema?.name) {
-      return { $ref: `#/components/schemas/${targetSchema.name}` };
+      return { $ref: schemaRefText(targetSchema.name) };
     }
-    // Fallback for anonymous schemas - inline them
+    // Fallback for anonymous schemas - inline them. A reference back to one
+    // that is being inlined can't be written out (there is no name to $ref):
+    // it becomes `{}`, and the validator reports the missing name.
     if (targetSchema) {
-      return serializeSchema(targetSchema, doc);
+      if (inlining.has(targetSchema.id)) return {};
+      inlining.add(targetSchema.id);
+      try {
+        return serializeSchema(targetSchema, doc);
+      } finally {
+        inlining.delete(targetSchema.id);
+      }
     }
     return { type: 'object' }; // Fallback
   }
   return serializeSchema(schemaOrRef.schema, doc);
 }
 
-function serializeOperation(route: Route, doc: ApiDocument): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+function serializeOperation(route: Route, doc: ApiDocument): Json {
+  const result: Json = {};
 
   if (route.summary) {
     result.summary = route.summary;
@@ -340,10 +454,12 @@ function serializeOperation(route: Route, doc: ApiDocument): Record<string, unkn
   }
 
   // Responses
-  const responses: Record<string, unknown> = {};
+  const responses: Json = {};
   for (const [statusCode, response] of route.responses) {
-    responses[statusCode] = serializeResponse(response, doc);
+    if (statusCode === '__proto__') setOwn(responses, statusCode, serializeResponse(response, doc));
+    else responses[statusCode] = serializeResponse(response, doc);
   }
+  mergeExtraEntries(responses, route.extra, 'responses');
   result.responses = responses;
 
   // Security
@@ -351,6 +467,8 @@ function serializeOperation(route: Route, doc: ApiDocument): Record<string, unkn
   if (security) {
     result.security = security;
   }
+
+  addExtra(result, route.extra);
 
   return result;
 }
@@ -375,8 +493,20 @@ function serializeSecurity(
   return result;
 }
 
-function serializeParameter(param: ParameterDef, doc: ApiDocument): Record<string, unknown> {
-  const result: Record<string, unknown> = {
+/** `schema`, or `content: {<media type>: {schema}}` for a parameter imported that way. */
+function writeParameterSchema(target: Json, param: ParameterDef, doc: ApiDocument): void {
+  const schema = serializeSchemaOrRef(param.schema, doc);
+  if (param.content) {
+    const media: Json = { schema };
+    addExtra(media, param.content.extra);
+    target.content = { [param.content.mediaType]: media };
+  } else {
+    target.schema = schema;
+  }
+}
+
+function serializeParameter(param: ParameterDef, doc: ApiDocument): Json {
+  const result: Json = {
     name: param.name,
     in: param.in,
   };
@@ -388,17 +518,56 @@ function serializeParameter(param: ParameterDef, doc: ApiDocument): Record<strin
     result.description = param.description;
   }
 
-  result.schema = serializeSchemaOrRef(param.schema, doc);
+  writeParameterSchema(result, param, doc);
 
   if (param.example !== undefined) {
     result.example = param.example;
   }
+  addExtra(result, param.extra);
 
   return result;
 }
 
-function serializeRequestBody(body: RequestBody, doc: ApiDocument): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+function serializeHeader(header: ParameterDef, doc: ApiDocument): Json {
+  const result: Json = {};
+  if (header.description) result.description = header.description;
+  if (header.required) result.required = true;
+  writeParameterSchema(result, header, doc);
+  if (header.example !== undefined) result.example = header.example;
+  addExtra(result, header.extra);
+  return result;
+}
+
+/** The placeholder the parser puts in a media type without `schema`, still untouched. */
+function isOmittedSchemaPlaceholder(schema: SchemaOrRef): boolean {
+  if (schema.kind !== 'inline') return false;
+  const s = schema.schema;
+  for (const key of Object.keys(s) as Array<keyof SchemaNode>) {
+    if (s[key] === undefined || key === 'id' || key === 'untyped' || key === 'type') continue;
+    return false;
+  }
+  return s.type === 'object' && s.untyped === true;
+}
+
+function serializeContent(content: Map<string, MediaType>, doc: ApiDocument): Json {
+  const result: Json = {};
+  for (const [contentType, media] of content) {
+    const out: Json = {};
+    if (!(media.schemaOmitted && isOmittedSchemaPlaceholder(media.schema))) {
+      out.schema = serializeSchemaOrRef(media.schema, doc);
+    }
+    if (media.example !== undefined) {
+      out.example = media.example;
+    }
+    if (media.extra !== undefined) addExtra(out, media.extra);
+    if (contentType === '__proto__') setOwn(result, contentType, out);
+    else result[contentType] = out;
+  }
+  return result;
+}
+
+function serializeRequestBody(body: RequestBody, doc: ApiDocument): Json {
+  const result: Json = {};
 
   if (body.description) {
     result.description = body.description;
@@ -407,56 +576,37 @@ function serializeRequestBody(body: RequestBody, doc: ApiDocument): Record<strin
     result.required = true;
   }
 
-  const content: Record<string, unknown> = {};
-  for (const [contentType, media] of body.content) {
-    content[contentType] = {
-      schema: serializeSchemaOrRef(media.schema, doc),
-    };
-    if (media.example !== undefined) {
-      (content[contentType] as Record<string, unknown>).example = media.example;
-    }
-  }
-  result.content = content;
+  result.content = serializeContent(body.content, doc);
+  addExtra(result, body.extra);
 
   return result;
 }
 
-function serializeResponse(response: ResponseDef, doc: ApiDocument): Record<string, unknown> {
-  const result: Record<string, unknown> = {
+function serializeResponse(response: ResponseDef, doc: ApiDocument): Json {
+  const result: Json = {
     description: response.description,
   };
 
   if (response.headers && response.headers.size > 0) {
-    const headers: Record<string, unknown> = {};
+    const headers: Json = {};
     for (const [name, header] of response.headers) {
-      const out: Record<string, unknown> = {};
-      if (header.description) out.description = header.description;
-      if (header.required) out.required = true;
-      out.schema = serializeSchemaOrRef(header.schema, doc);
-      if (header.example !== undefined) out.example = header.example;
-      headers[name] = out;
+      setOwn(headers, name, serializeHeader(header, doc));
     }
     result.headers = headers;
   }
 
   if (response.content && response.content.size > 0) {
-    const content: Record<string, unknown> = {};
-    for (const [contentType, media] of response.content) {
-      content[contentType] = {
-        schema: serializeSchemaOrRef(media.schema, doc),
-      };
-      if (media.example !== undefined) {
-        (content[contentType] as Record<string, unknown>).example = media.example;
-      }
-    }
-    result.content = content;
+    result.content = serializeContent(response.content, doc);
   }
+  addExtra(result, response.extra);
 
   return result;
 }
 
-function serializeSecurityScheme(scheme: SecurityScheme): Record<string, unknown> {
-  const result: Record<string, unknown> = {
+const FLOW_NAMES = ['implicit', 'password', 'clientCredentials', 'authorizationCode'] as const;
+
+function serializeSecurityScheme(scheme: SecurityScheme): Json {
+  const result: Json = {
     type: scheme.type,
   };
 
@@ -477,12 +627,27 @@ function serializeSecurityScheme(scheme: SecurityScheme): Record<string, unknown
   }
 
   if (scheme.type === 'oauth2' && scheme.flows) {
-    result.flows = scheme.flows;
+    const flows: Json = {};
+    for (const name of FLOW_NAMES) {
+      const flow = scheme.flows[name];
+      if (!flow) continue;
+      const out: Json = {};
+      if (flow.authorizationUrl !== undefined) out.authorizationUrl = flow.authorizationUrl;
+      if (flow.tokenUrl !== undefined) out.tokenUrl = flow.tokenUrl;
+      if (flow.refreshUrl !== undefined) out.refreshUrl = flow.refreshUrl;
+      out.scopes = flow.scopes;
+      addExtra(out, flow.extra);
+      flows[name] = out;
+    }
+    addExtra(flows, scheme.flows.extra);
+    result.flows = flows;
   }
 
   if (scheme.type === 'openIdConnect' && scheme.openIdConnectUrl) {
     result.openIdConnectUrl = scheme.openIdConnectUrl;
   }
+
+  addExtra(result, scheme.extra);
 
   return result;
 }
@@ -560,6 +725,8 @@ function depsValid(fragment: Fragment, doc: ApiDocument): boolean {
   return true;
 }
 
+const OPERATION_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head', 'trace']);
+
 const NULL_SUFFIX = ': null\n';
 
 /** The YAML rendering of a mapping key, e.g. `/pets/{id}` or `"200"`; null for complex keys. */
@@ -585,17 +752,30 @@ function emitIncremental(doc: ApiDocument): string {
 
   for (const [key, value] of Object.entries(shell)) {
     if (key === 'paths') {
-      const paths = value as Record<string, Record<string, Route>>;
+      const paths = value as Record<string, Record<string, unknown>>;
       if (Object.keys(paths).length === 0) {
         out.push('paths: {}\n');
         continue;
       }
       out.push('paths:\n');
-      for (const [path, operations] of Object.entries(paths)) {
+      const routePaths = new Set<string>();
+      for (const route of doc.routes.values()) routePaths.add(route.path);
+      for (const [path, item] of Object.entries(paths)) {
+        if (!routePaths.has(path)) {
+          // an x-* entry of the Paths object
+          out.push(indentLines(stringifyYaml({ [path]: item }), '  '));
+          continue;
+        }
         const pathKey = keyText(cache, path);
         if (pathKey === null) return stringifyYaml(serializeDocument(doc));
         out.push(`  ${pathKey}:\n`);
-        for (const [method, route] of Object.entries(operations)) {
+        for (const [method, entry] of Object.entries(item)) {
+          if (!OPERATION_METHODS.has(method)) {
+            // a path-item field (summary, servers, x-*)
+            out.push(indentLines(stringifyYaml({ [method]: entry }), '    '));
+            continue;
+          }
+          const route = entry as Route;
           let fragment = cache.operations.get(route);
           if (fragment === undefined || !depsValid(fragment, doc)) {
             fragment = {

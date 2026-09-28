@@ -67,7 +67,7 @@ export const useSchemaCount = (): number => useEditorStore((s) => s.document.sch
 // Route tree (sidebar)
 
 /** Method order within a path (BLUEPRINT §2.2). */
-export const METHOD_ORDER: readonly HttpMethod[] = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head']
+export const METHOD_ORDER: readonly HttpMethod[] = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace']
 
 export const UNTAGGED_GROUP_KEY = '__untagged__'
 
