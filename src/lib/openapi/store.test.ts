@@ -20,6 +20,8 @@ let owner: SchemaNode;
 let listPets: Route;
 let getPet: Route;
 
+const summary = () => doc().routes.get(listPets.id)!.summary;
+
 function fixture(): ApiDocument {
   const d = createEmptyDocument();
   owner = createSchema('object', 'Owner');
@@ -317,8 +319,6 @@ describe('editor store: deleting a security scheme', () => {
 });
 
 describe('editor store: undo / redo', () => {
-  const summary = () => doc().routes.get(listPets.id)!.summary;
-
   it('undo walks back through edits', () => {
     expect(store().canUndo()).toBe(false);
     store().updateRoute(listPets.id, { summary: 'one' });
@@ -515,8 +515,22 @@ describe('editor store: structural sharing', () => {
   });
 });
 
+/** Sets the summary of `listPets` as if typed at time `at`. */
+const type = (text: string, at: number) => {
+  vi.setSystemTime(at);
+  store().updateRoute(listPets.id, { summary: text });
+};
+/** Undoes everything, returning how many undo steps there were. */
+const undoSteps = () => {
+  let steps = 0;
+  while (store().canUndo()) {
+    store().undo();
+    steps++;
+  }
+  return steps;
+};
+
 describe('editor store: history coalescing', () => {
-  const summary = () => doc().routes.get(listPets.id)!.summary;
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
@@ -525,20 +539,6 @@ describe('editor store: history coalescing', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
-
-  const type = (text: string, at: number) => {
-    vi.setSystemTime(at);
-    store().updateRoute(listPets.id, { summary: text });
-  };
-  /** Undoes everything, returning how many undo steps there were. */
-  const undoSteps = () => {
-    let steps = 0;
-    while (store().canUndo()) {
-      store().undo();
-      steps++;
-    }
-    return steps;
-  };
 
   it('merges keystrokes on the same field into one undo step', () => {
     type('L', 0);

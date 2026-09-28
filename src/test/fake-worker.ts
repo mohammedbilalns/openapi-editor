@@ -24,7 +24,7 @@ export class ClonedMessageWorker implements WorkerLike {
     if (this.queue.length >= (this.options.batch ?? 1)) this.flush();
   }
   private flush() {
-    const replies = this.options.reverse ? this.queue.reverse() : this.queue;
+    const replies = this.options.reverse ? this.queue.toReversed() : this.queue;
     this.queue = [];
     setTimeout(() => {
       if (this.terminated) return;

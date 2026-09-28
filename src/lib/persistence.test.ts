@@ -152,6 +152,12 @@ describe('persistence: autosave timing', () => {
   })
 })
 
+function beforeUnload(): Event {
+  const event = new Event('beforeunload', { cancelable: true })
+  window.dispatchEvent(event)
+  return event
+}
+
 describe('persistence: nothing is lost when the page goes away', () => {
   type Pending = { doc: ApiDocument; resolve: () => void; reject: (error: unknown) => void }
   let pending: Pending[]
@@ -177,12 +183,6 @@ describe('persistence: nothing is lost when the page goes away', () => {
     await page.hydrateDocument()
     vi.useFakeTimers()
     return page
-  }
-
-  function beforeUnload(): Event {
-    const event = new Event('beforeunload', { cancelable: true })
-    window.dispatchEvent(event)
-    return event
   }
 
   it('registers the beforeunload guard only while a change is unsaved or being written', async () => {

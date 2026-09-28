@@ -29,6 +29,18 @@
         "caughtErrors": "none"
       }
     ],
+    "import/no-unassigned-import": [
+      "warn",
+      {
+        "allow": [
+          "**/*.css",
+          "@fontsource/**",
+          "@fontsource-variable/**",
+          "fake-indexeddb/auto",
+          "@testing-library/jest-dom/vitest"
+        ]
+      }
+    ],
     "react/refs": "warn",
     "react/set-state-in-effect": "warn",
     "jsx-a11y/click-events-have-key-events": "warn",
@@ -72,10 +84,38 @@
     },
     {
       "files": [
+        "src/lib/openapi/openapi.worker.ts",
+        "src/lib/openapi/worker-client.ts",
+        "src/lib/persistence.ts"
+      ],
+      "rules": {
+        "unicorn/require-post-message-target-origin": "off"
+      }
+    },
+    {
+      "files": [
+        "src/lib/storage/repository.ts",
+        "src/lib/storage/repository.test.ts"
+      ],
+      "rules": {
+        "unicorn/prefer-add-event-listener": "off"
+      }
+    },
+    {
+      "files": [
         "src/components/ui/**"
       ],
       "rules": {
         "jsx-a11y/label-has-associated-control": "off"
+      }
+    },
+    {
+      "files": [
+        "src/components/route-editor/*-panel.tsx",
+        "src/components/route-editor/row-parts.tsx"
+      ],
+      "rules": {
+        "jsx-a11y/prefer-tag-over-role": "off"
       }
     }
   ]

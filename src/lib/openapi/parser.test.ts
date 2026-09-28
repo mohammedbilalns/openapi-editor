@@ -130,7 +130,7 @@ describe('parseYaml: realistic spec', () => {
 
   it('parses every operation with its method and path', () => {
     const ops = Array.from(doc.routes.values()).map((r) => `${r.method} ${r.path}`);
-    expect(ops.sort()).toEqual(['delete /pets/{petId}', 'get /health', 'get /pets', 'get /pets/{petId}', 'post /pets'].sort());
+    expect(ops.toSorted()).toEqual(['delete /pets/{petId}', 'get /health', 'get /pets', 'get /pets/{petId}', 'post /pets'].toSorted());
     const del = route(doc, 'delete', '/pets/{petId}');
     expect(del.deprecated).toBe(true);
     expect(del.operationId).toBe('deletePet');

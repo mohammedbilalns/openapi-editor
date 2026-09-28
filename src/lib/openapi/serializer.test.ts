@@ -46,13 +46,13 @@ describe('serializeToYaml: realistic spec round trip', () => {
   });
 });
 
-describe('serializeDocument: model -> OpenAPI mapping', () => {
-  function docWith(...schemas: SchemaNode[]): ApiDocument {
-    const doc = createEmptyDocument();
-    for (const s of schemas) doc.schemas.set(s.id, s);
-    return doc;
-  }
+function docWith(...schemas: SchemaNode[]): ApiDocument {
+  const doc = createEmptyDocument();
+  for (const s of schemas) doc.schemas.set(s.id, s);
+  return doc;
+}
 
+describe('serializeDocument: model -> OpenAPI mapping', () => {
   it('emits refs by the *current* name of the target schema', () => {
     const user = createSchema('object', 'User');
     const list = createSchema('array', 'UserList');
@@ -95,8 +95,8 @@ describe('serializeDocument: model -> OpenAPI mapping', () => {
     }
     const out = serializeDocument(doc) as Json;
     expect(Object.keys(out.paths)).toEqual(['/a', '/b']);
-    expect(Object.keys(out.paths['/a']).sort()).toEqual(['get', 'post']);
-    expect(Object.keys(out.paths['/b']).sort()).toEqual(['delete', 'get']);
+    expect(Object.keys(out.paths['/a']).toSorted()).toEqual(['get', 'post']);
+    expect(Object.keys(out.paths['/b']).toSorted()).toEqual(['delete', 'get']);
     expect(out.paths['/a'].get.responses).toEqual({ '200': { description: 'Successful response' } });
   });
 

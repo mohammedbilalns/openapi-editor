@@ -148,7 +148,7 @@ describe('validateDocument', () => {
       const copy: Route = { ...get, id: 'copy' };
       doc.routes.set(copy.id, copy);
       const r = validateDocument(doc);
-      expect(codes(r).sort()).toEqual(['DUPLICATE_OPERATION', 'DUPLICATE_OPERATION_ID']);
+      expect(codes(r).toSorted()).toEqual(['DUPLICATE_OPERATION', 'DUPLICATE_OPERATION_ID']);
       expect(find(r, 'DUPLICATE_OPERATION')[0].location.nodeId).toBe('copy');
     });
 
@@ -193,7 +193,7 @@ describe('validateDocument', () => {
       expect(codes(validateDocument(doc))).toEqual(['NO_SUCCESS_RESPONSE']);
 
       get.responses.clear();
-      expect(codes(validateDocument(doc)).sort()).toEqual(['NO_ERROR_RESPONSE', 'NO_RESPONSES', 'NO_SUCCESS_RESPONSE']);
+      expect(codes(validateDocument(doc)).toSorted()).toEqual(['NO_ERROR_RESPONSE', 'NO_RESPONSES', 'NO_SUCCESS_RESPONSE']);
       expect(validateDocument(doc).valid).toBe(false);
     });
   });
@@ -210,12 +210,12 @@ describe('validateDocument', () => {
       get.responses.set('500', { id: 'e', description: 'err', content: new Map([['application/json', { schema: dangling }]]) });
 
       const hits = find(validateDocument(doc), 'BROKEN_REFERENCE');
-      expect(hits.map((h) => h.message).sort()).toEqual([
+      expect(hits.map((h) => h.message).toSorted()).toEqual([
         'Broken reference in Pet.friends[items].',
         'Broken reference in parameter “q” of GET /pets/{petId}.',
         'Broken reference in the request body of GET /pets/{petId}.',
         'Broken reference in the 500 response of GET /pets/{petId}.',
-      ].sort());
+      ].toSorted());
       expect(hits.every((h) => h.severity === 'error')).toBe(true);
     });
 
@@ -262,7 +262,7 @@ describe('validateDocument', () => {
       pet.properties!.set('a', { name: 'a', required: false, schema: ref(a) }); // Pet -> A <-> B
       use(doc, get, a);
       const flagged = find(validateDocument(doc), 'CIRCULAR_REFERENCE').map((h) => h.location.nodeId);
-      expect(flagged.sort()).toEqual([a.id, b.id].sort());
+      expect(flagged.toSorted()).toEqual([a.id, b.id].toSorted());
     });
   });
 

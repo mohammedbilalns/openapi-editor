@@ -21,7 +21,7 @@ function serviceWorker(): Plugin {
       const assets = Object.keys(bundle)
         .filter((file) => file.startsWith('assets/'))
         .map((file) => `/${file}`)
-        .sort()
+        .toSorted()
       // Hashed file names change whenever content changes, so they make a stable version.
       const version = createHash('sha256').update(assets.join('\n')).digest('hex').slice(0, 12)
       const source = readFileSync(template, 'utf8')

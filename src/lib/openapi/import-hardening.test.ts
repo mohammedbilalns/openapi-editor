@@ -55,13 +55,13 @@ components:
   });
 });
 
-describe('YAML alias bombs and oversized input', () => {
-  function bomb(depth: number) {
-    let y = "openapi: 3.0.3\ninfo: {title: T, version: '1'}\npaths: {}\nx-defs:\n  l0: &l0 {type: string, example: lol}\n";
-    for (let i = 1; i <= depth; i++) y += `  l${i}: &l${i} [*l${i - 1}, *l${i - 1}]\n`;
-    return `${y}components:\n  schemas:\n    Bomb: {type: object, example: *l${depth}}\n`;
-  }
+function bomb(depth: number) {
+  let y = "openapi: 3.0.3\ninfo: {title: T, version: '1'}\npaths: {}\nx-defs:\n  l0: &l0 {type: string, example: lol}\n";
+  for (let i = 1; i <= depth; i++) y += `  l${i}: &l${i} [*l${i - 1}, *l${i - 1}]\n`;
+  return `${y}components:\n  schemas:\n    Bomb: {type: object, example: *l${depth}}\n`;
+}
 
+describe('YAML alias bombs and oversized input', () => {
   it('rejects a document whose aliases expand far beyond its size', () => {
     const source = bomb(17); // ~550 bytes that expand to ~14 MB
     const { document, errors } = parseYaml(source);
@@ -144,7 +144,7 @@ components:
     useEditorStore.getState().deleteSchema(byName('Pet').id);
     useEditorStore.getState().deleteSchema(byName('Dog').id);
     const broken = validateDocument(useEditorStore.getState().document).errors.filter((e) => e.code === 'BROKEN_REFERENCE');
-    expect(broken.map((e) => e.location.nodeId).sort()).toEqual([byName('Map').id, byName('Negated').id].sort());
+    expect(broken.map((e) => e.location.nodeId).toSorted()).toEqual([byName('Map').id, byName('Negated').id].toSorted());
   });
 
   it('warns when references are kept as plain text (e.g. inside extensions)', () => {

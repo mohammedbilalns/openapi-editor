@@ -254,15 +254,15 @@ describe('RouteEditor: validation', () => {
   })
 })
 
-describe('RouteEditor: imported spec', () => {
-  function seedRealistic() {
-    const { document } = parseYaml(REALISTIC_SPEC_YAML)
-    seedStore(document!)
-    const find = (method: string, path: string) =>
-      [...document!.routes.values()].find((route) => route.method === method && route.path === path)!.id
-    return { listPets: find('get', '/pets'), createPet: find('post', '/pets') }
-  }
+function seedRealistic() {
+  const { document } = parseYaml(REALISTIC_SPEC_YAML)
+  seedStore(document!)
+  const find = (method: string, path: string) =>
+    [...document!.routes.values()].find((route) => route.method === method && route.path === path)!.id
+  return { listPets: find('get', '/pets'), createPet: find('post', '/pets') }
+}
 
+describe('RouteEditor: imported spec', () => {
   it('keeps security, response headers and examples it does not edit', async () => {
     const user = userEvent.setup()
     const { listPets } = seedRealistic()

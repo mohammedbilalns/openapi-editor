@@ -109,7 +109,9 @@ async function setInspector(page, open, tab) {
 async function scrollYamlTo(scope, ...needles) {
   const region = scope.getByRole('region', { name: 'Generated YAML' })
   await expect(region.locator('[data-line]').first()).toBeVisible()
-  await region.evaluate(async (el, needles) => {
+  await region.evaluate(async (el, targets) => {
+    // Runs in the page via evaluate(), so it has to stay self-contained.
+    // oxlint-disable-next-line unicorn/consistent-function-scoping
     const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     el.scrollTop = 0
     await frame()
@@ -121,8 +123,8 @@ async function scrollYamlTo(scope, ...needles) {
         const number = Number(line.dataset.line)
         if (number <= lastSeen) continue
         lastSeen = number
-        if ((line.lastElementChild?.textContent ?? '').trimEnd() !== needles[next]) continue
-        if (++next < needles.length) continue
+        if ((line.lastElementChild?.textContent ?? '').trimEnd() !== targets[next]) continue
+        if (++next < targets.length) continue
         el.scrollTop += line.getBoundingClientRect().top - el.getBoundingClientRect().top
         await frame()
         return

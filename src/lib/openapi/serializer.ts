@@ -214,7 +214,7 @@ function buildDocument(doc: ApiDocument, shell: boolean): OpenAPIDocument {
   }
 
   // Sort paths alphabetically
-  const sortedPaths = Array.from(pathGroups.keys()).sort();
+  const sortedPaths = Array.from(pathGroups.keys()).toSorted();
   for (const path of sortedPaths) {
     const routes = pathGroups.get(path)!;
     const item: Json = {};

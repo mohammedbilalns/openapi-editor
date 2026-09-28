@@ -163,7 +163,7 @@ function textEditKey(target: string, updates: object): string | undefined {
     const v = (updates as Record<string, unknown>)[k];
     if (typeof v !== 'string' && typeof v !== 'number') return undefined;
   }
-  return `${target}|${keys.sort().join(',')}`;
+  return `${target}|${keys.toSorted().join(',')}`;
 }
 
 /**

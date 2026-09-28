@@ -132,9 +132,9 @@ function validateSchemas(
     if (schema.type === 'object') {
       validateObjectSchema(schema, doc, errors, warnings);
     } else if (schema.type === 'enum') {
-      validateEnumSchema(schema, errors, warnings);
+      validateEnumSchema(schema, errors);
     } else if (schema.type === 'array') {
-      validateArraySchema(schema, doc, errors, warnings);
+      validateArraySchema(schema, errors);
     } else if (['oneOf', 'anyOf', 'allOf'].includes(schema.type)) {
       validateCompositionSchema(schema, doc, errors, warnings);
     }
@@ -171,11 +171,7 @@ function validateObjectSchema(
   }
 }
 
-function validateEnumSchema(
-  schema: SchemaNode,
-  errors: ValidationError[],
-  warnings: ValidationError[]
-) {
+function validateEnumSchema(schema: SchemaNode, errors: ValidationError[]) {
   if (!schema.enumValues || schema.enumValues.length === 0) {
     errors.push({
       code: 'EMPTY_ENUM',
@@ -202,12 +198,7 @@ function validateEnumSchema(
   }
 }
 
-function validateArraySchema(
-  schema: SchemaNode,
-  doc: ApiDocument,
-  errors: ValidationError[],
-  warnings: ValidationError[]
-) {
+function validateArraySchema(schema: SchemaNode, errors: ValidationError[]) {
   if (!schema.items) {
     errors.push({
       code: 'MISSING_ARRAY_ITEMS',
@@ -442,7 +433,7 @@ function validateReferences(
 
     // Check request body
     if (route.requestBody?.content) {
-      for (const [contentType, media] of route.requestBody.content) {
+      for (const media of route.requestBody.content.values()) {
         checkRef(media.schema, `the request body of ${operationLabel(route)}`, id);
       }
     }
@@ -450,7 +441,7 @@ function validateReferences(
     // Check responses
     for (const [statusCode, response] of route.responses) {
       if (response.content) {
-        for (const [contentType, media] of response.content) {
+        for (const media of response.content.values()) {
           checkRef(media.schema, `the ${statusCode} response of ${operationLabel(route)}`, id);
         }
       }

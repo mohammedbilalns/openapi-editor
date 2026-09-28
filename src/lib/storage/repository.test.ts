@@ -241,21 +241,21 @@ describe('IndexedDBRepository: two tabs', () => {
   });
 });
 
-describe('IndexedDBRepository: opening the database', () => {
-  function openOld(version: number): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('openapi-editor', version);
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains('projects')) {
-          request.result.createObjectStore('projects', { keyPath: 'metadata.id' });
-          request.result.createObjectStore('settings');
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
+function openOld(version: number): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('openapi-editor', version);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains('projects')) {
+        request.result.createObjectStore('projects', { keyPath: 'metadata.id' });
+        request.result.createObjectStore('settings');
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
 
+describe('IndexedDBRepository: opening the database', () => {
   it('rejects instead of hanging when an old tab blocks the upgrade, and a retry works once it closes', async () => {
     const oldTab = await openOld(1); // previous build: ignores versionchange, keeps its connection
     await expect(repo.getActiveProjectId()).rejects.toBeInstanceOf(StorageBlockedError);

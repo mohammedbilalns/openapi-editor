@@ -3,10 +3,10 @@
 import { handleWorkerRequest, type WorkerRequest } from './worker-protocol';
 
 const scope = self as unknown as {
-  onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
+  addEventListener: (type: 'message', listener: (event: MessageEvent<WorkerRequest>) => void) => void;
   postMessage: (message: unknown) => void;
 };
 
-scope.onmessage = (event) => {
+scope.addEventListener('message', (event) => {
   scope.postMessage(handleWorkerRequest(event.data));
-};
+});
