@@ -78,7 +78,11 @@ export const SchemaTypePicker = React.memo(function SchemaTypePicker({
 
   const chooseType = (type: SchemaType) => {
     setOpen(false)
-    if (value.kind === 'inline' && value.schema.type === type) return
+    if (value.kind === 'inline' && value.schema.type === type) {
+      // An untyped schema (imported without `type`) keeps its details and gets the type keyword.
+      if (value.schema.untyped) onChange({ kind: 'inline', schema: { ...value.schema, untyped: undefined } })
+      return
+    }
     onChange({ kind: 'inline', schema: createSchema(type) })
   }
   const chooseRef = (targetId: NodeId) => {

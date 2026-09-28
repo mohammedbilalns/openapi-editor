@@ -163,7 +163,7 @@ function TypeField({ schema }: { schema: SchemaNode }) {
 
   const change = async (next: SchemaType) => {
     const current = getSchema(schema.id)
-    if (!current || current.type === next) return
+    if (!current || (current.type === next && !current.untyped)) return
     const loss = typeChangeLoss(current, next)
     if (loss) {
       const ok = await confirm({ title: `Change type to ${next}?`, description: loss, confirmLabel: 'Change type' })
@@ -177,15 +177,21 @@ function TypeField({ schema }: { schema: SchemaNode }) {
     sealHistory()
   }
 
+  // An untyped schema (imported without `type`) has no selected value, so picking
+  // the type it is shown as still sets it.
   return (
     <FieldRow label="Type" htmlFor={id}>
-      <Select value={schema.type} onValueChange={(next) => void change(next as SchemaType)}>
+      <Select<SchemaType | null>
+        value={schema.untyped ? null : schema.type}
+        onValueChange={(next) => void change(next as SchemaType)}
+      >
         <SelectTrigger id={id} className="w-full max-w-60">
           <SelectValue>
-            {(value: SchemaType) => (
+            {(value: SchemaType | null) => (
               <>
-                <SchemaTypeIcon type={value} />
-                <span className="font-mono">{value}</span>
+                <SchemaTypeIcon type={value ?? schema.type} />
+                <span className="font-mono">{value ?? schema.type}</span>
+                {value === null && <span className="text-subtle-foreground">untyped</span>}
               </>
             )}
           </SelectValue>

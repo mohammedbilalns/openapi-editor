@@ -69,13 +69,18 @@ export function typeChangeLoss(schema: SchemaNode, next: SchemaType): string | n
 
 /**
  * Updates for `updateSchema` that turn `schema` into `next`: structures for the
- * new type are created, ones it can't have are cleared. Compatible parts are
+ * new type are created, ones it can't have are cleared, and an untyped
+ * (imported without `type`) schema becomes typed. Compatible parts are
  * kept (variants between oneOf/anyOf/allOf; constraints between number and
  * integer; example and default between primitives).
  */
 export function changeSchemaType(schema: SchemaNode, next: SchemaType): Partial<SchemaNode> {
+  // Choosing a type sets it: an imported schema without `type` exports one from now on.
+  const typed = schema.untyped ? { untyped: undefined } : {}
+  // Same type on an untyped schema: only the type keyword is new, the structure stays.
+  if (schema.type === next) return { type: next, ...typed }
   const fresh = createSchema(next)
-  const updates: Partial<Record<TypeSpecificKey, unknown>> & { type: SchemaType } = { type: next }
+  const updates: Partial<Record<TypeSpecificKey | 'untyped', unknown>> & { type: SchemaType } = { type: next, ...typed }
   const clear = (...keys: TypeSpecificKey[]) => {
     for (const key of keys) if (schema[key] !== undefined) updates[key] = undefined
   }
