@@ -1,4 +1,4 @@
-import { Download, Ellipsis, FileCode2, Import, Menu, Monitor, Moon, PanelRight, Redo2, Sun, CircleAlert, Undo2 } from 'lucide-react'
+import { Download, Ellipsis, FileCode2, FolderOpen, Import, Menu, Monitor, Moon, PanelRight, Redo2, Save, Sun, CircleAlert, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -15,8 +15,10 @@ import {
 import { formatKeys } from '@/components/shared'
 import { useBreakpoint } from '@/hooks/use-media-query'
 import { useTheme } from '@/hooks/use-theme'
+import { isTauri } from '@/lib/platform'
 import { getActions, useCanRedo, useCanUndo } from '@/lib/openapi/selectors'
 import { isTheme } from '@/lib/theme'
+import { useWorkspaceStore } from '@/lib/workspace/state'
 import { Breadcrumbs, CurrentCrumb, usePageCrumbs } from './breadcrumbs'
 import { exportDocument } from './document-actions'
 import { IconButton } from './icon-button'
@@ -31,37 +33,76 @@ import { INSPECTOR_KEYS, REDO_KEYS, UNDO_KEYS } from './shortcuts'
  */
 export function TopBar() {
   const breakpoint = useBreakpoint()
+  const isDesktop = isTauri()
+  const activeProject = useWorkspaceStore((s) => s.activeProject)
+  const openProject = useWorkspaceStore((s) => s.openProject)
+  const openFile = useWorkspaceStore((s) => s.openFile)
+  const saveToDisk = useWorkspaceStore((s) => s.saveToDisk)
+  const isSaving = useWorkspaceStore((s) => s.isSaving)
+
   if (breakpoint === 'phone') return <PhoneTopBar />
   const full = breakpoint !== 'tablet'
   return (
     <header className="z-20 flex h-11 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
       <Breadcrumbs />
+      {activeProject && (
+        <span className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-muted/40 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+          <FolderOpen className="size-3 text-foreground" />
+          <span className="max-w-40 truncate text-foreground">{activeProject.name}</span>
+        </span>
+      )}
       <div className="flex shrink-0 items-center gap-1">
         <HistoryButtons />
         <InspectorToggle />
         <ThemeMenu />
-        {full ? (
-          <Button variant="outline" size="sm" onClick={shell.importSpec} className="ml-1">
-            <Import />
-            Import
-          </Button>
+        {isDesktop ? (
+          <>
+            <Button variant="outline" size="sm" onClick={() => void openProject()} className="ml-1">
+              <FolderOpen />
+              Open Folder
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void openFile()}>
+              <FileCode2 />
+              Open File
+            </Button>
+            {activeProject ? (
+              <Button size="sm" disabled={isSaving} onClick={() => void saveToDisk()} className="ml-1">
+                <Save />
+                {isSaving ? 'Saving…' : 'Save'}
+              </Button>
+            ) : (
+              <Button size="sm" onClick={exportDocument} className="ml-1">
+                <Download />
+                Export YAML
+              </Button>
+            )}
+          </>
         ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<IconButton label="More actions" />}>
-              <Ellipsis />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={shell.importSpec}>
+          <>
+            {full ? (
+              <Button variant="outline" size="sm" onClick={shell.importSpec} className="ml-1">
                 <Import />
-                Import…
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                Import
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<IconButton label="More actions" />}>
+                  <Ellipsis />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem onClick={shell.importSpec}>
+                    <Import />
+                    Import…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <Button size="sm" onClick={exportDocument} className="ml-1">
+              <Download />
+              Export YAML
+            </Button>
+          </>
         )}
-        <Button size="sm" onClick={exportDocument} className="ml-1">
-          <Download />
-          Export YAML
-        </Button>
       </div>
     </header>
   )

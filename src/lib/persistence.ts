@@ -14,9 +14,12 @@
  * - `useSaveStatus()` exposes the state for the sidebar footer.
  */
 import { create } from 'zustand'
+import { saveMultiFileProject } from '@/lib/openapi/multi-file/writer'
 import { useEditorStore } from '@/lib/openapi/store'
 import type { ApiDocument } from '@/lib/openapi/types'
 import { getRepository, SaveConflictError, type ProjectMetadata } from '@/lib/storage'
+import { getWorkspaceAdapter } from '@/lib/workspace'
+import { useWorkspaceStore } from '@/lib/workspace/state'
 
 export const DEFAULT_PROJECT_ID = 'default'
 const DEFAULT_PROJECT_NAME = 'Untitled API'
@@ -163,8 +166,17 @@ function write(doc: ApiDocument): Promise<void> {
   const saved = repository.saveProject({ metadata: next, document: doc }).then(() => {
     channel?.postMessage({ type: 'saved', projectId: next.id, revision: repository.getRevision?.(next.id) })
   })
+
+  const { activeProject } = useWorkspaceStore.getState()
+  const diskSave = activeProject
+    ? saveMultiFileProject(getWorkspaceAdapter(), doc, activeProject.entryFile).then(() => undefined).catch((err: unknown) => {
+        console.error('Failed to autosave multi-file project to disk', err)
+      })
+    : Promise.resolve()
+
+  const combined = Promise.all([saved, diskSave]).then(() => undefined)
   // Hydration falls back to the default id, so this can land after the page is gone.
-  return first ? saved.then(() => repository.setActiveProjectId(next.id)) : saved
+  return first ? combined.then(() => repository.setActiveProjectId(next.id)) : combined
 }
 
 function hasUnsavedWork(): boolean {
