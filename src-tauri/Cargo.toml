@@ -1,17 +1,17 @@
 [package]
-name = "app"
+name = "openapi-editor"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Visual OpenAPI specification editor"
+authors = ["OpenAPI Editor Contributors"]
+license = "MIT"
+repository = "https://github.com/bilalnsmuhammed/openapi-editor"
 edition = "2024"
 rust-version = "1.90"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "app_lib"
+name = "openapi_editor_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

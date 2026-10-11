@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { openApp } from './support/app';
+import { isMobile, openApp } from './support/app';
 
 test.describe('Platform and workspace modes', () => {
-  test('web mode renders standard Import and Export controls in top bar', async ({ page }) => {
+  test('web mode renders standard Import and Export controls in top bar', async ({ page }, testInfo) => {
+    test.skip(isMobile(testInfo), 'Top bar actions are desktop/tablet specific');
     await openApp(page);
 
     const banner = page.getByRole('banner');
@@ -14,10 +15,11 @@ test.describe('Platform and workspace modes', () => {
     await expect(banner.getByRole('button', { name: 'Open File' })).toBeHidden();
   });
 
-  test('desktop mode dynamically renders Open Folder and Open File in top bar', async ({ page }) => {
+  test('desktop mode dynamically renders Open Folder and Open File in top bar', async ({ page }, testInfo) => {
+    test.skip(isMobile(testInfo), 'Top bar actions are desktop/tablet specific');
     // Inject Tauri runtime indicator before page loads
     await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+      (window as unknown as Record<string, unknown>)['__TAURI_INTERNALS__'] = {
         plugins: {},
       };
     });

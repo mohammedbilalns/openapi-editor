@@ -21,7 +21,8 @@
     "bench": "node --expose-gc --import tsx bench/core.bench.mts",
     "screenshots": "node scripts/screenshots.mjs",
     "tauri": "tauri",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "package:arch": "bash packaging/arch/build-arch-package.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

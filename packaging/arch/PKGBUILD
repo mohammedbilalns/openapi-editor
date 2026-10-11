@@ -1,0 +1,28 @@
+# Maintainer: OpenAPI Editor Contributors <https://github.com/bilalnsmuhammed/openapi-editor>
+pkgname=openapi-editor-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Visual OpenAPI specification editor with multi-file workspace support"
+arch=('x86_64')
+url="https://github.com/bilalnsmuhammed/openapi-editor"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'glib2' 'cairo' 'pango' 'hicolor-icon-theme')
+provides=('openapi-editor')
+conflicts=('openapi-editor')
+options=('!strip')
+source=(
+  "openapi-editor"
+  "openapi-editor.desktop"
+  "icon_32x32.png"
+  "icon_128x128.png"
+  "icon.png"
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  install -Dm755 "${srcdir}/openapi-editor" "${pkgdir}/usr/bin/openapi-editor"
+  install -Dm644 "${srcdir}/openapi-editor.desktop" "${pkgdir}/usr/share/applications/openapi-editor.desktop"
+  install -Dm644 "${srcdir}/icon_128x128.png" "${pkgdir}/usr/share/icons/hicolor/128x128/apps/openapi-editor.png"
+  install -Dm644 "${srcdir}/icon_32x32.png" "${pkgdir}/usr/share/icons/hicolor/32x32/apps/openapi-editor.png"
+  install -Dm644 "${srcdir}/icon.png" "${pkgdir}/usr/share/pixmaps/openapi-editor.png"
+}

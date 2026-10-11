@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=OpenAPI Editor
+GenericName=OpenAPI Editor
+Comment=Visual OpenAPI specification editor with multi-file workspace support
+Exec=openapi-editor %U
+Icon=openapi-editor
+Terminal=false
+Type=Application
+Categories=Development;IDE;TextEditor;
+StartupNotify=true
+MimeType=application/json;application/x-yaml;text/yaml;
