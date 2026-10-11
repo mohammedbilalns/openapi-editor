@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "vite dev --port 3000",
-    "build": "vite build",
+    "build": "NODE_OPTIONS=\"--dns-result-order=ipv4first\" vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc -b",
     "lint": "oxlint",
