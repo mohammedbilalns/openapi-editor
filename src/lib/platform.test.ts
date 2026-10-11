@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isTauri } from './platform';
 
 describe('platform detection', () => {
-  const originalWindow = globalThis.window;
-
   beforeEach(() => {
     // Reset window.__TAURI_INTERNALS__ before each test
     if (typeof window !== 'undefined') {

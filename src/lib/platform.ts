@@ -9,5 +9,6 @@ export function isTauri(): boolean {
   if (typeof window === 'undefined') {
     return false;
   }
-  return typeof (window as unknown as WindowWithTauri).__TAURI_INTERNALS__ !== 'undefined';
+  const win = window as unknown as Record<string, unknown>;
+  return typeof win['__TAURI_INTERNALS__'] !== 'undefined';
 }

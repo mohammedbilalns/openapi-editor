@@ -769,6 +769,7 @@ function parseSchema(
     if (!MODELED_SCHEMA_KEYWORDS.has(key)) setOwn((extra ??= {}), key, schemaData[key]);
   }
   // Modelled keywords the model could not take here (rare, so checked one by one)
+  if (typeof schemaData.$ref === 'string') extra = keepKeyword(extra, schemaData, '$ref');
   if (keepRawType) extra = keepKeyword(extra, schemaData, 'type');
   for (const key of ['oneOf', 'anyOf', 'allOf'] as const) {
     if (key === composition || schemaData[key] === undefined) continue;
@@ -1155,4 +1156,69 @@ const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options'
 
 export function isHttpMethod(method: string): method is HttpMethod {
   return HTTP_METHODS.has(method);
+}
+
+/**
+ * Parses an external standalone schema file (e.g. schemas/user.yaml).
+ */
+export function parseStandaloneSchema(
+  data: unknown,
+  name: string | undefined,
+  id: NodeId = generateId(),
+  schemaNameToId: Map<string, NodeId> = new Map(),
+): { schema: SchemaNode; errors: ValidationError[] } {
+  const ctx: ParseContext = {
+    schemaNameToId,
+    securitySchemeNameToId: new Map(),
+    components: {},
+    usedComponents: new Set(),
+    refSiblings: 0,
+    errors: [],
+  };
+  const schema = parseSchema(data, name, id, ctx);
+  return { schema, errors: ctx.errors };
+}
+
+/**
+ * Parses an external standalone path item file (e.g. paths/users.yaml).
+ */
+export function parseStandalonePathItem(
+  path: string,
+  data: unknown,
+  schemaNameToId: Map<string, NodeId> = new Map(),
+): { routes: Route[]; pathExtra?: ExtraFields; errors: ValidationError[] } {
+  const ctx: ParseContext = {
+    schemaNameToId,
+    securitySchemeNameToId: new Map(),
+    components: {},
+    usedComponents: new Set(),
+    refSiblings: 0,
+    errors: [],
+  };
+  const pathItem = asObject(data);
+  const pathParameters = Array.isArray(pathItem.parameters) ? pathItem.parameters : [];
+  let pathExtra: ExtraFields | undefined;
+  const routes: Route[] = [];
+
+  for (const key of Object.keys(pathItem)) {
+    const method = key.toLowerCase();
+    if (key === 'parameters') continue;
+    if (!isHttpMethod(method)) {
+      setOwn((pathExtra ??= {}), key, pathItem[key]);
+      continue;
+    }
+    const operationData = pathItem[key];
+    if (!isObject(operationData)) continue;
+
+    const route = parseOperation(path, method, operationData, pathParameters, ctx);
+    routes.push(route);
+  }
+
+  if (pathExtra) {
+    for (const route of routes) {
+      if (route.pathExtra === undefined) route.pathExtra = pathExtra;
+    }
+  }
+
+  return { routes, pathExtra, errors: ctx.errors };
 }

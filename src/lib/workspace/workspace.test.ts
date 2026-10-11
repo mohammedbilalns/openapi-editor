@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { getWorkspaceAdapter, setWorkspaceAdapter } from './index';
 import { WebWorkspaceAdapter } from './web-adapter';
 

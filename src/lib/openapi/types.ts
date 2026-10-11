@@ -33,9 +33,20 @@ export interface PropertyDef {
   description?: string;
 }
 
+export interface FileOrigin {
+  /** Relative file path within the workspace (e.g. "schemas/user.yaml" or "paths/users.yaml") */
+  filePath: string;
+  /** True when the file directly represents this entity */
+  isStandaloneFile: boolean;
+  /** Optional JSON pointer if referencing an entity inside an external file */
+  jsonPointer?: string;
+}
+
 export interface SchemaNode {
   id: NodeId;
   name?: string;
+  /** Origin file where this schema is stored on disk */
+  origin?: FileOrigin;
   type: SchemaType;
   description?: string;
   properties?: Map<string, PropertyDef>;
@@ -217,6 +228,8 @@ export interface Route {
   id: NodeId;
   path: string;
   method: HttpMethod;
+  /** Origin file where this route/operation is stored on disk */
+  origin?: FileOrigin;
   summary?: string;
   description?: string;
   operationId?: string;
