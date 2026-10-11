@@ -1,10 +1,13 @@
 import { createHash } from 'node:crypto'
+import dns from 'node:dns'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
+
+dns.setDefaultResultOrder('ipv4first')
 
 /**
  * Emits `sw.js` into the client build with the list of hashed assets and a
