@@ -1186,10 +1186,11 @@ export function parseStandalonePathItem(
   path: string,
   data: unknown,
   schemaNameToId: Map<string, NodeId> = new Map(),
+  securitySchemeNameToId: Map<string, NodeId> = new Map(),
 ): { routes: Route[]; pathExtra?: ExtraFields; errors: ValidationError[] } {
   const ctx: ParseContext = {
     schemaNameToId,
-    securitySchemeNameToId: new Map(),
+    securitySchemeNameToId,
     components: {},
     usedComponents: new Set(),
     refSiblings: 0,

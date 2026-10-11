@@ -1,5 +1,6 @@
 import type { WorkspaceAdapter } from '../../workspace';
 import {
+  isHttpMethod,
   parseStandalonePathItem,
   parseStandaloneSchema,
   parseText,
@@ -18,6 +19,66 @@ export interface MultiFileResolutionResult {
   document: ApiDocument;
   loadedFiles: Set<string>;
   errors: ValidationError[];
+}
+
+export interface ResolvedRef {
+  filePath: string;
+  fragment?: string;
+}
+
+/**
+ * Decodes a JSON Pointer token according to RFC 6901:
+ * `~1` -> `/`, `~0` -> `~`
+ */
+export function decodeJsonPointerToken(token: string): string {
+  return token.replace(/~1/g, '/').replace(/~0/g, '~');
+}
+
+/**
+ * Encodes a JSON Pointer token according to RFC 6901:
+ * `~` -> `~0`, `/` -> `~1`
+ */
+export function encodeJsonPointerToken(token: string): string {
+  return token.replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
+/**
+ * Resolves a JSON Pointer (RFC 6901) against data.
+ * Supports fragments like `#/components/schemas/User` or `#/~1auth~1login`.
+ */
+export function resolveJsonPointer(data: unknown, pointer: string): unknown {
+  if (!pointer || pointer === '#' || pointer === '') {
+    return data;
+  }
+  const clean = pointer.startsWith('#') ? pointer.slice(1) : pointer;
+  if (!clean.startsWith('/')) {
+    if (data && typeof data === 'object' && clean in (data as Record<string, unknown>)) {
+      return (data as Record<string, unknown>)[clean];
+    }
+    return undefined;
+  }
+
+  const tokens = clean
+    .split('/')
+    .slice(1)
+    .map(decodeJsonPointerToken);
+
+  let current: unknown = data;
+  for (const token of tokens) {
+    if (current === null || current === undefined || typeof current !== 'object') {
+      return undefined;
+    }
+    if (Array.isArray(current)) {
+      const idx = Number.parseInt(token, 10);
+      if (Number.isNaN(idx) || idx < 0 || idx >= current.length) {
+        return undefined;
+      }
+      current = current[idx];
+    } else {
+      current = (current as Record<string, unknown>)[token];
+    }
+  }
+  return current;
 }
 
 /**
@@ -41,6 +102,19 @@ export function resolveRelativePath(fromFilePath: string, targetPath: string): s
     }
   }
   return resolved.join('/');
+}
+
+/**
+ * Resolves a reference string (with optional `#...` fragment) relative to `fromFilePath`.
+ */
+export function resolveRefPath(fromFilePath: string, ref: string): ResolvedRef {
+  const hashIdx = ref.indexOf('#');
+  const targetPath = hashIdx === -1 ? ref : ref.slice(0, hashIdx);
+  const fragment = hashIdx === -1 ? undefined : ref.slice(hashIdx + 1);
+  return {
+    filePath: resolveRelativePath(fromFilePath, targetPath),
+    fragment,
+  };
 }
 
 function deriveSchemaName(filePath: string): string {
@@ -112,69 +186,51 @@ export async function resolveMultiFileSpec(
     }
   }
 
-  // File path -> Schema NodeId cache to avoid loading the same external file multiple times
-  const fileToSchemaId = new Map<string, NodeId>();
-
-  // 1. Resolve external schemas declared in components.schemas
-  for (const [id, schema] of Array.from(doc.schemas.entries())) {
-    const rawRef = schema.extraKeywords?.$ref;
-    if (typeof rawRef === 'string' && !rawRef.startsWith('#/')) {
-      const resolvedPath = resolveRelativePath(entryFile, rawRef);
-      await loadExternalSchema(resolvedPath, schema.name, id);
-    }
+  // Security scheme name -> NodeId mapping
+  const securitySchemeNameToId = new Map<string, NodeId>();
+  for (const [id, scheme] of doc.securitySchemes) {
+    securitySchemeNameToId.set(scheme.name, id);
   }
 
-  // 2. Resolve external schemas and paths declared in root raw object
-  try {
-    const rawRoot = parseText(rootContent);
-    if (rawRoot && typeof rawRoot === 'object') {
-      const rootObj = rawRoot as Record<string, unknown>;
-      const rawComponents = rootObj.components as Record<string, unknown> | undefined;
-      const rawSchemas = rawComponents?.schemas as Record<string, unknown> | undefined;
-      if (rawSchemas && typeof rawSchemas === 'object') {
-        for (const [name, schemaVal] of Object.entries(rawSchemas)) {
-          if (schemaVal && typeof schemaVal === 'object' && '$ref' in schemaVal) {
-            const refStr = (schemaVal as { $ref: unknown }).$ref;
-            if (typeof refStr === 'string' && !refStr.startsWith('#/')) {
-              const resolvedPath = resolveRelativePath(entryFile, refStr);
-              const existingId = schemaNameToId.get(name);
-              await loadExternalSchema(resolvedPath, name, existingId);
-            }
-          }
-        }
-      }
+  // Set of ref strings that have been successfully resolved
+  const resolvedRefStrings = new Set<string>();
 
-      const rawPaths = rootObj.paths as Record<string, unknown> | undefined;
-      if (rawPaths && typeof rawPaths === 'object') {
-        for (const [pathKey, pathVal] of Object.entries(rawPaths)) {
-          if (pathVal && typeof pathVal === 'object' && '$ref' in pathVal) {
-            const pathRef = (pathVal as { $ref: unknown }).$ref;
-            if (typeof pathRef === 'string' && !pathRef.startsWith('#/')) {
-              const resolvedPath = resolveRelativePath(entryFile, pathRef);
-              await loadExternalPathItem(pathKey, resolvedPath);
-            }
-          }
-        }
-      }
+  // Cache parsed data per file to avoid redundant reads/parses
+  const parsedFileCache = new Map<string, unknown>();
+  // Cache schema IDs by ref string (${filePath}#${fragment || ''})
+  const refToSchemaId = new Map<string, NodeId>();
+
+  async function getOrLoadFileData(filePath: string): Promise<unknown> {
+    if (parsedFileCache.has(filePath)) {
+      return parsedFileCache.get(filePath);
     }
-  } catch {
-    // rawRoot inspection is best-effort
+    const fileText = await adapter.readFile(filePath);
+    loadedFiles.add(filePath);
+    const parsedData = parseText(fileText);
+    parsedFileCache.set(filePath, parsedData);
+    return parsedData;
   }
 
-  // Helper to load and link an external schema file
+  // Helper to load and link an external schema file or fragment
   async function loadExternalSchema(
-    filePath: string,
+    rawRef: string,
+    parentFile: string,
     preferredName?: string,
     existingId?: NodeId,
   ): Promise<NodeId | null> {
-    if (fileToSchemaId.has(filePath)) {
-      return fileToSchemaId.get(filePath)!;
+    const { filePath, fragment } = resolveRefPath(parentFile, rawRef);
+    const cacheKey = fragment ? `${filePath}#${fragment}` : filePath;
+
+    if (refToSchemaId.has(cacheKey)) {
+      return refToSchemaId.get(cacheKey)!;
+    }
+    if (!fragment && refToSchemaId.has(filePath)) {
+      return refToSchemaId.get(filePath)!;
     }
 
-    let fileText: string;
+    let parsedData: unknown;
     try {
-      fileText = await adapter.readFile(filePath);
-      loadedFiles.add(filePath);
+      parsedData = await getOrLoadFileData(filePath);
     } catch (error) {
       errors.push({
         code: 'EXTERNAL_FILE_NOT_FOUND',
@@ -185,22 +241,33 @@ export async function resolveMultiFileSpec(
       return null;
     }
 
-    let parsedData: unknown;
-    try {
-      parsedData = parseText(fileText);
-    } catch (error) {
-      errors.push({
-        code: 'EXTERNAL_FILE_PARSE_ERROR',
-        message: `Failed to parse YAML in "${filePath}": ${error instanceof Error ? error.message : String(error)}`,
-        severity: 'warning',
-        location: {},
-      });
-      return null;
+    let targetData: unknown = parsedData;
+    if (fragment) {
+      targetData = resolveJsonPointer(parsedData, fragment);
+      if (targetData === undefined) {
+        errors.push({
+          code: 'EXTERNAL_FRAGMENT_NOT_FOUND',
+          message: `Could not resolve schema fragment "#${fragment}" in file "${filePath}".`,
+          severity: 'warning',
+          location: {},
+        });
+        return null;
+      }
     }
 
-    const schemaName = preferredName ?? deriveSchemaName(filePath);
+    let schemaName = preferredName;
+    if (!schemaName && fragment) {
+      const lastToken = fragment.split('/').filter(Boolean).pop();
+      if (lastToken) {
+        schemaName = decodeJsonPointerToken(lastToken);
+      }
+    }
+    if (!schemaName) {
+      schemaName = deriveSchemaName(filePath);
+    }
+
     const { schema: loadedSchema, errors: parseErrors } = parseStandaloneSchema(
-      parsedData,
+      targetData,
       schemaName,
       existingId,
       schemaNameToId,
@@ -210,10 +277,14 @@ export async function resolveMultiFileSpec(
     loadedSchema.origin = {
       filePath,
       isStandaloneFile: true,
+      jsonPointer: fragment ? (fragment.startsWith('/') ? fragment : `/${fragment}`) : undefined,
     };
 
     doc.schemas.set(loadedSchema.id, loadedSchema);
-    fileToSchemaId.set(filePath, loadedSchema.id);
+    refToSchemaId.set(cacheKey, loadedSchema.id);
+    if (!fragment) {
+      refToSchemaId.set(filePath, loadedSchema.id);
+    }
     if (loadedSchema.name) {
       schemaNameToId.set(loadedSchema.name, loadedSchema.id);
     }
@@ -225,11 +296,16 @@ export async function resolveMultiFileSpec(
   }
 
   // Helper to load external path items
-  async function loadExternalPathItem(path: string, filePath: string): Promise<void> {
-    let fileText: string;
+  async function loadExternalPathItem(
+    pathKey: string,
+    rawRef: string,
+    parentFile: string,
+  ): Promise<void> {
+    const { filePath, fragment } = resolveRefPath(parentFile, rawRef);
+
+    let parsedData: unknown;
     try {
-      fileText = await adapter.readFile(filePath);
-      loadedFiles.add(filePath);
+      parsedData = await getOrLoadFileData(filePath);
     } catch (error) {
       errors.push({
         code: 'EXTERNAL_FILE_NOT_FOUND',
@@ -240,26 +316,51 @@ export async function resolveMultiFileSpec(
       return;
     }
 
-    let parsedData: unknown;
-    try {
-      parsedData = parseText(fileText);
-    } catch (error) {
+    let targetData: unknown;
+    if (fragment) {
+      targetData = resolveJsonPointer(parsedData, fragment);
+    }
+    if (!targetData && parsedData && typeof parsedData === 'object') {
+      const obj = parsedData as Record<string, unknown>;
+      if (pathKey in obj) {
+        targetData = obj[pathKey];
+      } else {
+        const hasHttpMethods = Object.keys(obj).some((k) => isHttpMethod(k.toLowerCase()));
+        if (hasHttpMethods) {
+          targetData = obj;
+        } else {
+          targetData = resolveJsonPointer(parsedData, pathKey);
+        }
+      }
+    }
+
+    if (!targetData) {
       errors.push({
-        code: 'EXTERNAL_FILE_PARSE_ERROR',
-        message: `Failed to parse YAML in "${filePath}": ${error instanceof Error ? error.message : String(error)}`,
+        code: 'EXTERNAL_PATH_NOT_FOUND',
+        message: `Could not find path item for "${pathKey}" in "${filePath}"${fragment ? ` (fragment: #${fragment})` : ''}.`,
         severity: 'warning',
         location: {},
       });
       return;
     }
 
-    const { routes, errors: pathErrors } = parseStandalonePathItem(path, parsedData, schemaNameToId);
+    const { routes, errors: pathErrors } = parseStandalonePathItem(
+      pathKey,
+      targetData,
+      schemaNameToId,
+      securitySchemeNameToId,
+    );
     errors.push(...pathErrors);
 
     for (const route of routes) {
       route.origin = {
         filePath,
         isStandaloneFile: true,
+        jsonPointer: fragment
+          ? (fragment.startsWith('/') ? fragment : `/${fragment}`)
+          : (parsedData && typeof parsedData === 'object' && pathKey in (parsedData as Record<string, unknown>))
+            ? `/${encodeJsonPointerToken(pathKey)}`
+            : undefined,
       };
       doc.routes.set(route.id, route);
       await resolveNestedRouteRefs(route, filePath);
@@ -314,7 +415,7 @@ export async function resolveMultiFileSpec(
     }
   }
 
-  // Checks if a SchemaOrRef is an unresolved external file ref and resolves it
+  // Checks if a SchemaOrRef is an unresolved external or internal ref and resolves it
   async function checkAndResolveSchemaOrRef(
     schemaOrRef: SchemaOrRef,
     parentFile: string,
@@ -322,11 +423,20 @@ export async function resolveMultiFileSpec(
     if (schemaOrRef.kind === 'inline') {
       const inline = schemaOrRef.schema;
       const rawRef = inline.extraKeywords?.$ref;
-      if (typeof rawRef === 'string' && !rawRef.startsWith('#/')) {
-        const nestedPath = resolveRelativePath(parentFile, rawRef);
-        const targetId = await loadExternalSchema(nestedPath);
-        if (targetId) {
-          return { kind: 'ref', targetId };
+      if (typeof rawRef === 'string') {
+        if (rawRef.startsWith('#/components/schemas/')) {
+          const name = rawRef.slice('#/components/schemas/'.length);
+          const targetId = schemaNameToId.get(name);
+          if (targetId) {
+            resolvedRefStrings.add(rawRef);
+            return { kind: 'ref', targetId };
+          }
+        } else if (!rawRef.startsWith('#/')) {
+          const targetId = await loadExternalSchema(rawRef, parentFile);
+          if (targetId) {
+            resolvedRefStrings.add(rawRef);
+            return { kind: 'ref', targetId };
+          }
         }
       }
       // Continue walking nested inline schema
@@ -335,9 +445,74 @@ export async function resolveMultiFileSpec(
     return null;
   }
 
+  // 1. Resolve external schemas declared in components.schemas
+  for (const [id, schema] of Array.from(doc.schemas.entries())) {
+    const rawRef = schema.extraKeywords?.$ref;
+    if (typeof rawRef === 'string' && !rawRef.startsWith('#/')) {
+      await loadExternalSchema(rawRef, entryFile, schema.name, id);
+    }
+  }
+
+  // 2. Resolve external schemas and paths declared in root raw object
+  try {
+    const rawRoot = parseText(rootContent);
+    if (rawRoot && typeof rawRoot === 'object') {
+      const rootObj = rawRoot as Record<string, unknown>;
+      const rawComponents = rootObj.components as Record<string, unknown> | undefined;
+      const rawSchemas = rawComponents?.schemas as Record<string, unknown> | undefined;
+      if (rawSchemas && typeof rawSchemas === 'object') {
+        for (const [name, schemaVal] of Object.entries(rawSchemas)) {
+          if (schemaVal && typeof schemaVal === 'object' && '$ref' in schemaVal) {
+            const refStr = (schemaVal as { $ref: unknown }).$ref;
+            if (typeof refStr === 'string' && !refStr.startsWith('#/')) {
+              const existingId = schemaNameToId.get(name);
+              await loadExternalSchema(refStr, entryFile, name, existingId);
+            }
+          }
+        }
+      }
+
+      const rawPaths = rootObj.paths as Record<string, unknown> | undefined;
+      if (rawPaths && typeof rawPaths === 'object') {
+        for (const [pathKey, pathVal] of Object.entries(rawPaths)) {
+          if (pathVal && typeof pathVal === 'object' && '$ref' in pathVal) {
+            const pathRef = (pathVal as { $ref: unknown }).$ref;
+            if (typeof pathRef === 'string' && !pathRef.startsWith('#/')) {
+              await loadExternalPathItem(pathKey, pathRef, entryFile);
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // rawRoot inspection is best-effort
+  }
+
+  // Filter out spurious PATH_WITHOUT_OPERATIONS warnings for paths that now have loaded operations
+  const loadedPaths = new Set<string>();
+  for (const route of doc.routes.values()) {
+    loadedPaths.add(route.path);
+  }
+
+  const finalErrors = errors.filter((err) => {
+    if (err.code === 'PATH_WITHOUT_OPERATIONS') {
+      const match = err.message.match(/^Path (\S+) has no operations/);
+      if (match && loadedPaths.has(match[1])) {
+        return false;
+      }
+    }
+    if (err.code === 'UNRESOLVED_REF') {
+      const match = err.message.match(/^Unresolved reference: (\S+)/);
+      if (match && resolvedRefStrings.has(match[1])) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   return {
     document: doc,
     loadedFiles,
-    errors,
+    errors: finalErrors,
   };
 }

@@ -1,7 +1,3 @@
-interface WindowWithTauri extends Window {
-  __TAURI_INTERNALS__?: unknown;
-}
-
 /**
  * Returns true if the application is currently running inside a Tauri desktop webview shell.
  */

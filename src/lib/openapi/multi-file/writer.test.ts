@@ -131,4 +131,43 @@ properties:
     const reloadedUser = Array.from(reloaded.document.schemas.values()).find((s) => s.name === 'User')!;
     expect(reloadedUser.description).toBe('Added description in editor');
   });
+
+  it('serializes multi-path files and preserves JSON format and pointer refs', async () => {
+    const adapter = new WebWorkspaceAdapter({
+      'openapi.json': JSON.stringify({
+        openapi: '3.0.0',
+        info: { title: 'Multi Path JSON API', version: '1.0.0' },
+        paths: {
+          '/auth/login': { $ref: './paths/auth.json#/~1auth~1login' },
+          '/auth/refresh': { $ref: './paths/auth.json#/~1auth~1refresh' },
+        },
+      }),
+      'paths/auth.json': JSON.stringify({
+        '/auth/login': {
+          post: { summary: 'Login Original' },
+        },
+        '/auth/refresh': {
+          post: { summary: 'Refresh Original' },
+        },
+      }),
+    });
+
+    const { document: doc } = await resolveMultiFileSpec(adapter, 'openapi.json');
+    const loginRoute = Array.from(doc.routes.values()).find((r) => r.path === '/auth/login')!;
+    loginRoute.summary = 'Login Updated';
+
+    const serialized = serializeMultiFileDocument(doc, 'openapi.json');
+    expect(serialized.has('openapi.json')).toBe(true);
+    expect(serialized.has('paths/auth.json')).toBe(true);
+
+    const authContent = serialized.get('paths/auth.json')!;
+    const parsedAuth = JSON.parse(authContent) as Record<string, { post: { summary: string } }>;
+    expect(parsedAuth['/auth/login'].post.summary).toBe('Login Updated');
+    expect(parsedAuth['/auth/refresh'].post.summary).toBe('Refresh Original');
+
+    const rootContent = serialized.get('openapi.json')!;
+    const parsedRoot = JSON.parse(rootContent) as { paths: Record<string, { $ref: string }> };
+    expect(parsedRoot.paths['/auth/login'].$ref).toBe('./paths/auth.json#/~1auth~1login');
+    expect(parsedRoot.paths['/auth/refresh'].$ref).toBe('./paths/auth.json#/~1auth~1refresh');
+  });
 });

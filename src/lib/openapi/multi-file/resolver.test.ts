@@ -1,6 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import { WebWorkspaceAdapter } from '../../workspace';
-import { resolveMultiFileSpec, resolveRelativePath } from './resolver';
+import {
+  decodeJsonPointerToken,
+  encodeJsonPointerToken,
+  resolveJsonPointer,
+  resolveMultiFileSpec,
+  resolveRelativePath,
+} from './resolver';
+
+describe('JSON pointer utilities', () => {
+  it('encodes and decodes JSON pointer tokens according to RFC 6901', () => {
+    expect(encodeJsonPointerToken('/auth/login')).toBe('~1auth~1login');
+    expect(encodeJsonPointerToken('user~name/profile')).toBe('user~0name~1profile');
+
+    expect(decodeJsonPointerToken('~1auth~1login')).toBe('/auth/login');
+    expect(decodeJsonPointerToken('user~0name~1profile')).toBe('user~name/profile');
+  });
+
+  it('resolves JSON pointers inside nested objects and arrays', () => {
+    const data = {
+      paths: {
+        '/auth/login': {
+          post: { summary: 'Login' },
+        },
+      },
+      definitions: [
+        { name: 'Admin' },
+        { name: 'User' },
+      ],
+    };
+
+    expect(resolveJsonPointer(data, '#/paths/~1auth~1login/post')).toEqual({ summary: 'Login' });
+    expect(resolveJsonPointer(data, '/definitions/1')).toEqual({ name: 'User' });
+    expect(resolveJsonPointer(data, '#/definitions/0/name')).toBe('Admin');
+    expect(resolveJsonPointer(data, '#/non_existent/path')).toBeUndefined();
+  });
+});
 
 describe('resolveRelativePath', () => {
   it('resolves direct relative sibling and child paths', () => {
@@ -186,5 +221,141 @@ components:
     const warning = result.errors.find((e) => e.code === 'EXTERNAL_FILE_NOT_FOUND');
     expect(warning).toBeDefined();
     expect(warning?.severity).toBe('warning');
+  });
+
+  it('resolves paths with JSON pointer fragments pointing to multi-path files (like buildathon/api)', async () => {
+    const adapter = new WebWorkspaceAdapter({
+      'openapi.json': JSON.stringify({
+        openapi: '3.0.0',
+        info: { title: 'Test Multi Path', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            bearerAuth: { type: 'http', scheme: 'bearer' },
+          },
+          schemas: {
+            User: { $ref: './schemas/user.json' },
+          },
+        },
+        paths: {
+          '/auth/login': { $ref: './paths/auth.json#/~1auth~1login' },
+          '/auth/refresh': { $ref: './paths/auth.json#/~1auth~1refresh' },
+        },
+      }),
+      'paths/auth.json': JSON.stringify({
+        '/auth/login': {
+          post: {
+            summary: 'Login User',
+            security: [{ bearerAuth: [] }],
+            responses: {
+              '200': {
+                description: 'OK',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        user: { $ref: '../schemas/user.json' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        '/auth/refresh': {
+          post: {
+            summary: 'Refresh Token',
+            security: [{ bearerAuth: [] }],
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      }),
+      'schemas/user.json': JSON.stringify({
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+        },
+      }),
+    });
+
+    const result = await resolveMultiFileSpec(adapter, 'openapi.json');
+    expect(result.errors).toHaveLength(0);
+    expect(result.loadedFiles).toContain('openapi.json');
+    expect(result.loadedFiles).toContain('paths/auth.json');
+    expect(result.loadedFiles).toContain('schemas/user.json');
+    expect(result.document.routes.size).toBe(2);
+
+    const loginRoute = Array.from(result.document.routes.values()).find((r) => r.path === '/auth/login');
+    expect(loginRoute).toBeDefined();
+    expect(loginRoute?.summary).toBe('Login User');
+    expect(loginRoute?.origin).toEqual({
+      filePath: 'paths/auth.json',
+      isStandaloneFile: true,
+      jsonPointer: '/~1auth~1login',
+    });
+
+    const refreshRoute = Array.from(result.document.routes.values()).find((r) => r.path === '/auth/refresh');
+    expect(refreshRoute).toBeDefined();
+    expect(refreshRoute?.summary).toBe('Refresh Token');
+    expect(refreshRoute?.origin).toEqual({
+      filePath: 'paths/auth.json',
+      isStandaloneFile: true,
+      jsonPointer: '/~1auth~1refresh',
+    });
+
+    // Check that nested user ref was resolved to schema node
+    const userSchema = Array.from(result.document.schemas.values()).find((s) => s.name === 'User');
+    expect(userSchema).toBeDefined();
+    expect(userSchema?.properties?.has('id')).toBe(true);
+
+    const resp = loginRoute?.responses.get('200');
+    const media = resp?.content?.get('application/json');
+    expect(media).toBeDefined();
+    const mediaSchema = media?.schema;
+    expect(mediaSchema?.kind).toBe('inline');
+    const inlineSchema = mediaSchema?.kind === 'inline' ? mediaSchema.schema : null;
+    const userProp = inlineSchema?.properties?.get('user');
+    expect(userProp?.schema).toEqual({ kind: 'ref', targetId: userSchema?.id });
+  });
+
+  it('resolves schemas with JSON pointer fragments', async () => {
+    const adapter = new WebWorkspaceAdapter({
+      'openapi.yaml': `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Admin:
+      $ref: './schemas/models.json#/definitions/Admin'
+`,
+      'schemas/models.json': JSON.stringify({
+        definitions: {
+          Admin: {
+            type: 'object',
+            properties: {
+              role: { type: 'string' },
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await resolveMultiFileSpec(adapter, 'openapi.yaml');
+    expect(result.errors).toHaveLength(0);
+    expect(result.loadedFiles).toContain('schemas/models.json');
+
+    const adminSchema = Array.from(result.document.schemas.values()).find((s) => s.name === 'Admin');
+    expect(adminSchema).toBeDefined();
+    expect(adminSchema?.properties?.get('role')).toBeDefined();
+    expect(adminSchema?.origin).toEqual({
+      filePath: 'schemas/models.json',
+      isStandaloneFile: true,
+      jsonPointer: '/definitions/Admin',
+    });
   });
 });

@@ -819,21 +819,43 @@ function emitIncremental(doc: ApiDocument): string {
 }
 
 /**
+ * Serializes a single SchemaNode into an OpenAPI schema JSON/object.
+ */
+export function serializeStandaloneSchemaObject(schema: SchemaNode, doc: ApiDocument): Json {
+  return serializeSchema(schema, doc);
+}
+
+/**
  * Serializes a single SchemaNode into standalone YAML.
  */
 export function serializeStandaloneSchema(schema: SchemaNode, doc: ApiDocument): string {
-  const json = serializeSchema(schema, doc);
+  const json = serializeStandaloneSchemaObject(schema, doc);
   return stringifyYaml(json);
+}
+
+/**
+ * Serializes routes sharing a path into an OpenAPI PathItem object.
+ */
+export function serializeStandalonePathItemObject(routes: Route[], doc: ApiDocument): Json {
+  const item: Json = {};
+  for (const route of routes) addExtra(item, route.pathExtra);
+  for (const route of routes) {
+    setOwn(item, route.method, serializeOperation(route, doc));
+  }
+  return item;
 }
 
 /**
  * Serializes routes sharing a path into a standalone OpenAPI PathItem YAML.
  */
 export function serializeStandalonePathItem(routes: Route[], doc: ApiDocument): string {
-  const item: Json = {};
-  for (const route of routes) addExtra(item, route.pathExtra);
-  for (const route of routes) {
-    setOwn(item, route.method, serializeOperation(route, doc));
-  }
+  const item = serializeStandalonePathItemObject(routes, doc);
   return stringifyYaml(item);
+}
+
+/**
+ * Serializes an ApiDocument into formatted JSON string.
+ */
+export function serializeToJson(doc: ApiDocument, space = 2): string {
+  return JSON.stringify(serializeDocument(doc), null, space) + '\n';
 }
