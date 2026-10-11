@@ -8,27 +8,7 @@ import {
 } from '../serializer';
 import type { ApiDocument, ExtraFields, Route, SchemaNode } from '../types';
 
-/**
- * Calculates relative reference string from the directory of `entryFile` to `targetFile`.
- * e.g. entryFile = "openapi.yaml", targetFile = "schemas/user.yaml" -> "./schemas/user.yaml"
- */
-function makeRelativeRef(fromEntryFile: string, targetFile: string): string {
-  const fromDir = fromEntryFile.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
-  if (!fromDir) {
-    return `./${targetFile.replace(/^\.?\//, '')}`;
-  }
-  const fromParts = fromDir.split('/').filter(Boolean);
-  const targetParts = targetFile.replace(/^\.?\//, '').split('/').filter(Boolean);
-
-  let common = 0;
-  while (common < fromParts.length && common < targetParts.length && fromParts[common] === targetParts[common]) {
-    common++;
-  }
-
-  const up = fromParts.length - common;
-  const rel = [...Array(up).fill('..'), ...targetParts.slice(common)].join('/');
-  return rel.startsWith('.') ? rel : `./${rel}`;
-}
+import { makeRelativeRef } from './path-utils';
 
 function formatFileContent(contentObj: unknown, filePath: string): string {
   if (filePath.toLowerCase().endsWith('.json')) {

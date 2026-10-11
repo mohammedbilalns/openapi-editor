@@ -21,112 +21,27 @@ export interface MultiFileResolutionResult {
   errors: ValidationError[];
 }
 
-export interface ResolvedRef {
-  filePath: string;
-  fragment?: string;
-}
+import {
+  decodeJsonPointerToken,
+  encodeJsonPointerToken,
+  resolveJsonPointer,
+} from './pointer';
+import {
+  deriveSchemaName,
+  resolveRefPath,
+  resolveRelativePath,
+  type ResolvedRef,
+} from './path-utils';
 
-/**
- * Decodes a JSON Pointer token according to RFC 6901:
- * `~1` -> `/`, `~0` -> `~`
- */
-export function decodeJsonPointerToken(token: string): string {
-  return token.replace(/~1/g, '/').replace(/~0/g, '~');
-}
-
-/**
- * Encodes a JSON Pointer token according to RFC 6901:
- * `~` -> `~0`, `/` -> `~1`
- */
-export function encodeJsonPointerToken(token: string): string {
-  return token.replace(/~/g, '~0').replace(/\//g, '~1');
-}
-
-/**
- * Resolves a JSON Pointer (RFC 6901) against data.
- * Supports fragments like `#/components/schemas/User` or `#/~1auth~1login`.
- */
-export function resolveJsonPointer(data: unknown, pointer: string): unknown {
-  if (!pointer || pointer === '#' || pointer === '') {
-    return data;
-  }
-  const clean = pointer.startsWith('#') ? pointer.slice(1) : pointer;
-  if (!clean.startsWith('/')) {
-    if (data && typeof data === 'object' && clean in (data as Record<string, unknown>)) {
-      return (data as Record<string, unknown>)[clean];
-    }
-    return undefined;
-  }
-
-  const tokens = clean
-    .split('/')
-    .slice(1)
-    .map(decodeJsonPointerToken);
-
-  let current: unknown = data;
-  for (const token of tokens) {
-    if (current === null || current === undefined || typeof current !== 'object') {
-      return undefined;
-    }
-    if (Array.isArray(current)) {
-      const idx = Number.parseInt(token, 10);
-      if (Number.isNaN(idx) || idx < 0 || idx >= current.length) {
-        return undefined;
-      }
-      current = current[idx];
-    } else {
-      current = (current as Record<string, unknown>)[token];
-    }
-  }
-  return current;
-}
-
-/**
- * Resolves relative file path `targetPath` against the directory containing `fromFilePath`.
- * Strips any trailing `#...` fragment before resolving.
- */
-export function resolveRelativePath(fromFilePath: string, targetPath: string): string {
-  const [cleanTarget] = targetPath.split('#');
-  const fromDir = fromFilePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
-  const segments = [
-    ...(fromDir ? fromDir.split('/') : []),
-    ...cleanTarget.replace(/\\/g, '/').split('/'),
-  ];
-  const resolved: string[] = [];
-  for (const seg of segments) {
-    if (seg === '.' || seg === '') continue;
-    if (seg === '..') {
-      resolved.pop();
-    } else {
-      resolved.push(seg);
-    }
-  }
-  return resolved.join('/');
-}
-
-/**
- * Resolves a reference string (with optional `#...` fragment) relative to `fromFilePath`.
- */
-export function resolveRefPath(fromFilePath: string, ref: string): ResolvedRef {
-  const hashIdx = ref.indexOf('#');
-  const targetPath = hashIdx === -1 ? ref : ref.slice(0, hashIdx);
-  const fragment = hashIdx === -1 ? undefined : ref.slice(hashIdx + 1);
-  return {
-    filePath: resolveRelativePath(fromFilePath, targetPath),
-    fragment,
-  };
-}
-
-function deriveSchemaName(filePath: string): string {
-  const filename = filePath.split('/').pop() ?? 'Schema';
-  const basename = filename.replace(/\.(yaml|yml|json)$/i, '');
-  // Capitalize first letter: user -> User, user-profile -> UserProfile
-  return basename
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('');
-}
+export {
+  decodeJsonPointerToken,
+  encodeJsonPointerToken,
+  resolveJsonPointer,
+  deriveSchemaName,
+  resolveRefPath,
+  resolveRelativePath,
+  type ResolvedRef,
+};
 
 /**
  * Recursively resolves an OpenAPI specification starting from `entryFile`.

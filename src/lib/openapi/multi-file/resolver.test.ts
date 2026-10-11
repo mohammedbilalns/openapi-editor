@@ -1,58 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WebWorkspaceAdapter } from '../../workspace';
-import {
-  decodeJsonPointerToken,
-  encodeJsonPointerToken,
-  resolveJsonPointer,
-  resolveMultiFileSpec,
-  resolveRelativePath,
-} from './resolver';
-
-describe('JSON pointer utilities', () => {
-  it('encodes and decodes JSON pointer tokens according to RFC 6901', () => {
-    expect(encodeJsonPointerToken('/auth/login')).toBe('~1auth~1login');
-    expect(encodeJsonPointerToken('user~name/profile')).toBe('user~0name~1profile');
-
-    expect(decodeJsonPointerToken('~1auth~1login')).toBe('/auth/login');
-    expect(decodeJsonPointerToken('user~0name~1profile')).toBe('user~name/profile');
-  });
-
-  it('resolves JSON pointers inside nested objects and arrays', () => {
-    const data = {
-      paths: {
-        '/auth/login': {
-          post: { summary: 'Login' },
-        },
-      },
-      definitions: [
-        { name: 'Admin' },
-        { name: 'User' },
-      ],
-    };
-
-    expect(resolveJsonPointer(data, '#/paths/~1auth~1login/post')).toEqual({ summary: 'Login' });
-    expect(resolveJsonPointer(data, '/definitions/1')).toEqual({ name: 'User' });
-    expect(resolveJsonPointer(data, '#/definitions/0/name')).toBe('Admin');
-    expect(resolveJsonPointer(data, '#/non_existent/path')).toBeUndefined();
-  });
-});
-
-describe('resolveRelativePath', () => {
-  it('resolves direct relative sibling and child paths', () => {
-    expect(resolveRelativePath('openapi.yaml', './schemas/user.yaml')).toBe('schemas/user.yaml');
-    expect(resolveRelativePath('openapi.yaml', 'schemas/user.yaml')).toBe('schemas/user.yaml');
-    expect(resolveRelativePath('src/api/openapi.yaml', './schemas/user.yaml')).toBe('src/api/schemas/user.yaml');
-  });
-
-  it('resolves parent directory traversals', () => {
-    expect(resolveRelativePath('paths/users.yaml', '../schemas/user.yaml')).toBe('schemas/user.yaml');
-    expect(resolveRelativePath('apis/v1/paths/users.yaml', '../../common/error.yaml')).toBe('apis/common/error.yaml');
-  });
-
-  it('strips json pointer fragments before resolving path', () => {
-    expect(resolveRelativePath('openapi.yaml', './schemas/models.yaml#/definitions/User')).toBe('schemas/models.yaml');
-  });
-});
+import { resolveMultiFileSpec } from './resolver';
 
 describe('resolveMultiFileSpec', () => {
   it('resolves external schema files referenced in components.schemas', async () => {
