@@ -817,3 +817,23 @@ function emitIncremental(doc: ApiDocument): string {
   }
   return out.join('');
 }
+
+/**
+ * Serializes a single SchemaNode into standalone YAML.
+ */
+export function serializeStandaloneSchema(schema: SchemaNode, doc: ApiDocument): string {
+  const json = serializeSchema(schema, doc);
+  return stringifyYaml(json);
+}
+
+/**
+ * Serializes routes sharing a path into a standalone OpenAPI PathItem YAML.
+ */
+export function serializeStandalonePathItem(routes: Route[], doc: ApiDocument): string {
+  const item: Json = {};
+  for (const route of routes) addExtra(item, route.pathExtra);
+  for (const route of routes) {
+    setOwn(item, route.method, serializeOperation(route, doc));
+  }
+  return stringifyYaml(item);
+}
